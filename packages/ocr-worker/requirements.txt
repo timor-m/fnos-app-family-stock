@@ -1,0 +1,2 @@
+rapidocr-openvino==1.4.4
+openvino>=2022.2,<=2024.0

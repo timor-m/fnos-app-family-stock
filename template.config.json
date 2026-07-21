@@ -1,0 +1,30 @@
+{
+  "appName": "fnos-app-family-stock",
+  "appTitle": "家藏",
+  "displayName": "家藏",
+  "appDescription": "面向多家庭与多地点的家庭物品、库存和临期管理应用。",
+  "desktopLaunchName": "fnos-app-family-stock.main",
+  "gatewayPrefix": "/app/fnos-app-family-stock",
+  "gatewaySocket": "app.sock",
+  "uiAllUsers": true,
+  "localDevPort": 3333,
+  "runtimeDependency": "nodejs_v22",
+  "osMinVersion": "1.1.3100",
+  "maintainer": "community",
+  "maintainerUrl": "",
+  "distributor": "community",
+  "distributorUrl": "",
+  "source": "thirdparty",
+  "platform": "all",
+  "runAs": "package",
+  "logLevel": "info",
+  "releaseNotes": {
+    "summary": "家庭物品、库存和临期管理应用初始化版本。",
+    "highlights": [
+      "多家庭和多地点领域模型",
+      "SQLite 本地持久化",
+      "家庭库存工作台",
+      "保留 fnOS 原生打包流程"
+    ]
+  }
+}

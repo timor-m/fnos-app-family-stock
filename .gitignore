@@ -1,0 +1,16 @@
+node_modules/
+.server-dist/
+.fnos-build/
+dist/
+.ui-dist/
+.tmp-nitro/
+.npm-cache/
+.data/
+tmp/
+.DS_Store
+*.log
+coverage/
+npm-debug.log*
+tools/fnpack
+tools/fnpack-*
+tools/fnpack.version

@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Download fnpack
+        run: npm run download:fnpack
+
+      - name: Pack fpk
+        run: npm run pack:fpk
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          {
+            echo "# 家藏 v${VERSION}"
+            echo
+            echo "## Summary"
+            echo
+            echo "- 面向多家庭、多地点的家庭库存管理应用"
+            echo "- Generated automatically by GitHub Actions"
+            echo
+            echo "## Release Artifacts"
+            echo
+            echo "- \`dist/app.tgz\`: fnOS app payload archive"
+            echo "- \`dist/*.fpk\`: installable fnOS package"
+            echo
+            echo "## Highlights"
+            echo
+            echo "- Vue 3 家庭库存工作台"
+            echo "- Nitro API 与 SQLite 本地持久化"
+            echo "- fnOS 统一网关与 Unix Socket"
+            echo "- fnOS 包结构自动校验"
+            echo "- GitHub Release artifact publishing"
+            echo
+            echo "## Notes"
+            echo
+            echo "- Generated from GitHub Actions"
+            echo "- Version source: \`package.json\`"
+            echo "- Template config source: \`template.config.json\`"
+          } > RELEASE_NOTES.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          name: fnOS App Template v${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/app.tgz
+            dist/*.fpk
