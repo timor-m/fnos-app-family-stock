@@ -35,7 +35,9 @@ jobs:
       - name: Prepare release notes
         shell: bash
         run: |
-          VERSION="$(node -p 'require("./package.json").version')"
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG_VERSION:-$PACKAGE_VERSION}"
           {
             echo "# 家藏 v${VERSION}"
             echo
@@ -60,15 +62,16 @@ jobs:
             echo "## Notes"
             echo
             echo "- Generated from GitHub Actions"
-            echo "- Version source: \`package.json\`"
-            echo "- Template config source: \`template.config.json\`"
+            echo "- Tag: \`${GITHUB_REF_NAME}\`"
+            echo "- Package version: \`${PACKAGE_VERSION}\`"
           } > RELEASE_NOTES.md
+          echo "release_name=家藏 v${VERSION}" >> "$GITHUB_ENV"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          name: fnOS App Template v${{ github.ref_name }}
+          name: ${{ env.release_name }}
           body_path: RELEASE_NOTES.md
           files: |
             dist/app.tgz
