@@ -1721,8 +1721,12 @@ onBeforeUnmount(() => {
   .photo-intake-body { padding: 16px; }
   .photo-intake-body .modal-footer {
     bottom: -16px;
+    flex-wrap: wrap;
     margin: 16px -16px -16px;
     padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  }
+  .photo-intake-body .modal-footer > p {
+    flex: 1 0 100%;
   }
   .recognition-detail,
   .recognized-fields dl {

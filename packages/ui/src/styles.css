@@ -2769,11 +2769,19 @@ button:disabled {
 
   .operation-summary > strong {
     justify-self: end;
+    white-space: nowrap;
   }
 
-  .edit-info-button {
-    grid-column: 2 / -1;
-    justify-self: start;
+  .operation-summary > div:nth-child(2) span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .operation-modal .modal-footer .cancel-button,
+  .operation-modal .modal-footer .primary-button {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .family-summary {
@@ -3041,15 +3049,6 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
-  .inventory-table td.product-cell {
-    padding-right: 126px;
-  }
-
-  .inventory-table td.action-cell {
-    top: 8px;
-    right: 8px;
-  }
-
   .storage-places-row {
     padding-left: 0;
   }
@@ -3234,6 +3233,7 @@ button:disabled {
 
 .history-right-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -3525,5 +3525,34 @@ button:disabled {
 
   .quantity-unit-row {
     grid-template-columns: 1fr;
+  }
+
+  .operation-summary-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .stock-list article.low-stock-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .stock-list article.low-stock-row .stock-progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .stock-list article.low-stock-row > button {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .location-list article {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .location-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
   }
 }

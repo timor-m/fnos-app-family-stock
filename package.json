@@ -1,6 +1,6 @@
 {
   "name": "fnos-app-family-stock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Family inventory and expiry management for fnOS",
   "type": "module",
   "author": {
