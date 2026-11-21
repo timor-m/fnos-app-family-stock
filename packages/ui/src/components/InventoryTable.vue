@@ -1,45 +1,18 @@
 <script setup lang="ts">
-import { MoreHorizontal, PackageOpen } from "@lucide/vue";
-
-export type InventoryItem = {
-  batchId: string;
-  productId: string;
-  name: string;
-  brand: string | null;
-  specification: string | null;
-  ingredients: string | null;
-  coverImageId: string | null;
-  coverImageUrl: string | null;
-  categoryName: string;
-  categoryKey: string;
-  categoryId: string;
-  quantity: number;
-  unit: string;
-  locationId: string;
-  locationName: string;
-  purchasedAt: string | null;
-  productionDate: string | null;
-  shelfLifeValue: number | null;
-  shelfLifeUnit: string | null;
-  expirationDate: string | null;
-  unitPrice: number | null;
-  channel: string | null;
-  lowStockThreshold: number | null;
-  daysRemaining: number | null;
-  stockedByUserId: string | null;
-  stockedByName: string | null;
-  stockedAt: string | null;
-  createdAt: string;
-};
+import { CheckCheck, Minus, MoreHorizontal, PackageOpen } from "@lucide/vue";
+import type { InventoryItem } from "../types/api";
 
 defineProps<{
   items: InventoryItem[];
+  filtered?: boolean;
   showExpiryFirst?: boolean;
   showActions?: boolean;
+  quickActionBusyId?: string;
 }>();
 
 defineEmits<{
   operate: [item: InventoryItem];
+  "quick-consume": [item: InventoryItem, mode: "one" | "all"];
 }>();
 
 function formatQuantity(value: number) {
@@ -87,13 +60,17 @@ function expiryClass(days: number | null) {
 function productSubtitle(item: InventoryItem) {
   return [item.brand, item.specification].filter(Boolean).join(" · ");
 }
+
+function locationLabel(item: InventoryItem) {
+  return item.storagePlaceName ? `${item.locationName} · ${item.storagePlaceName}` : item.locationName;
+}
 </script>
 
 <template>
   <div v-if="!items.length" class="empty-state">
     <PackageOpen :size="32" />
-    <strong>暂无库存记录</strong>
-    <span>点击“拍照录入”添加第一件物品</span>
+    <strong>{{ filtered ? "没有匹配的库存" : "暂无库存记录" }}</strong>
+    <span v-if="filtered">换个词，或清掉搜索</span>
   </div>
 
   <div v-else class="inventory-table-wrap">
@@ -102,7 +79,7 @@ function productSubtitle(item: InventoryItem) {
         <tr>
           <th>商品</th>
           <th>{{ showExpiryFirst ? "到期状态" : "品类" }}</th>
-          <th>地点</th>
+          <th>存放位置</th>
           <th>库存</th>
           <th>{{ showExpiryFirst ? "品类" : "到期日期" }}</th>
           <th v-if="showActions" class="action-heading">操作</th>
@@ -132,7 +109,9 @@ function productSubtitle(item: InventoryItem) {
             <small class="cell-subtitle">{{ formatDate(item.expirationDate) }}</small>
           </td>
           <td v-else data-label="品类">{{ item.categoryName }}</td>
-          <td data-label="地点">{{ item.locationName }}</td>
+          <td data-label="存放位置">
+            <span>{{ locationLabel(item) }}</span>
+          </td>
           <td class="quantity-cell" data-label="库存">{{ formatQuantity(item.quantity) }} {{ item.unit }}</td>
           <td v-if="showExpiryFirst" data-label="品类">{{ item.categoryName }}</td>
           <td v-else data-label="到期日期">
@@ -141,15 +120,37 @@ function productSubtitle(item: InventoryItem) {
             </span>
           </td>
           <td v-if="showActions" class="action-cell" data-label="操作">
-            <button
-              class="row-action"
-              type="button"
-              :aria-label="`处理 ${item.name}`"
-              :title="`处理 ${item.name}`"
-              @click="$emit('operate', item)"
-            >
-              <MoreHorizontal :size="18" />
-            </button>
+            <div class="row-actions">
+              <button
+                v-if="item.quantity > 1"
+                class="quick-action-btn"
+                type="button"
+                :disabled="quickActionBusyId === item.batchId"
+                :title="`快捷消耗 1 ${item.unit}`"
+                @click="$emit('quick-consume', item, 'one')"
+              >
+                <Minus :size="13" />1
+              </button>
+              <button
+                class="quick-action-btn finish"
+                type="button"
+                :disabled="quickActionBusyId === item.batchId"
+                :title="`标记 ${item.name} 已用完`"
+                @click="$emit('quick-consume', item, 'all')"
+              >
+                <CheckCheck :size="13" />用完
+              </button>
+              <button
+                class="row-action"
+                type="button"
+                :disabled="quickActionBusyId === item.batchId"
+                :aria-label="`处理 ${item.name}`"
+                :title="`处理 ${item.name}`"
+                @click="$emit('operate', item)"
+              >
+                <MoreHorizontal :size="18" />
+              </button>
+            </div>
           </td>
         </tr>
       </tbody>

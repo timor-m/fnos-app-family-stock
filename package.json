@@ -1,11 +1,10 @@
 {
   "name": "fnos-app-family-stock",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Family inventory and expiry management for fnOS",
   "type": "module",
   "author": {
-    "name": "timor-m",
-    "email": "timor-m@foxmail.com"
+    "name": "timor-m"
   },
   "repository": {
     "type": "git",
@@ -31,6 +30,7 @@
     "test": "node --experimental-strip-types --test packages/server/services/*.test.ts",
     "build:web": "vite build --config packages/ui/vite.config.ts",
     "build": "npm run build:web && nitro build",
+    "generate:icons": "node scripts/generate-icons.mjs",
     "start": "node scripts/start.mjs",
     "download:fnpack": "node scripts/download-fnpack.mjs",
     "prepare:package": "node scripts/prepare-package.mjs",
@@ -45,6 +45,7 @@
     "jimp": "^1.6.1",
     "nitro": "3.0.260610-beta",
     "vite": "^8.0.16",
-    "vue": "^3.5.38"
+    "vue": "^3.5.38",
+    "vue-router": "^4.6.4"
   }
 }

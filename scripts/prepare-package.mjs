@@ -18,8 +18,14 @@ const distDir = join(rootDir, "dist");
 const outputDir = join(rootDir, ".server-dist");
 const template = JSON.parse(readFileSync(join(rootDir, "template.config.json"), "utf8"));
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
-const version = packageJson.version || "0.1.0";
+const version = packageJson.version || "1.0.0";
 const subVersion = `${version}.0`;
+const releaseSummary = String(template.releaseNotes?.summary || template.appDescription || "").replace(/\s+/g, " ").trim();
+const releaseHighlights = Array.isArray(template.releaseNotes?.highlights) ? template.releaseNotes.highlights : [];
+const changelog = releaseHighlights
+  .map((item) => String(item).replace(/\s+/g, " ").trim())
+  .filter(Boolean)
+  .join("；");
 
 function assertConfig(condition, message) {
   if (!condition) {
@@ -69,16 +75,18 @@ chmodSync(join(appOcrWorker, "setup-runtime.sh"), 0o755);
 
 const iconsDir = join(rootDir, "packages", "assets", "icons");
 const generatedIconsDir = join(iconsDir, "generated");
-const packageIcon64 = join(generatedIconsDir, "icon_64.png");
+const packageIcon512Root = join(iconsDir, "ICON.PNG");
 const packageIcon256 = join(iconsDir, "ICON_256.PNG");
-const uiIconSizes = [32, 48, 64, 72, 96, 128, 256];
+const packageIcon512 = join(generatedIconsDir, "icon_512.png");
+const uiIconSizes = [32, 48, 64, 72, 96, 128, 256, 512];
 
-if (!existsSync(packageIcon64) || !existsSync(packageIcon256)) {
-  throw new Error("Missing required 64px or 256px package icon.");
+if (!existsSync(packageIcon512Root) || !existsSync(packageIcon256) || !existsSync(packageIcon512)) {
+  throw new Error("Missing required 512px root, 256px or generated 512px package icon.");
 }
 
-copyFileSync(packageIcon64, join(packageDir, "ICON.PNG"));
+copyFileSync(packageIcon512Root, join(packageDir, "ICON.PNG"));
 copyFileSync(packageIcon256, join(packageDir, "ICON_256.PNG"));
+copyFileSync(packageIcon512, join(packageDir, "ICON_512.PNG"));
 
 for (const size of uiIconSizes) {
   const generatedIcon = join(generatedIconsDir, `icon_${size}.png`);
@@ -109,7 +117,7 @@ version=${version}
 sub_version=${subVersion}
 display_name=${template.displayName}
 desc=${template.appDescription}
-changelog=${template.releaseNotes.summary}
+changelog=${changelog || releaseSummary}
 source=${template.source}
 platform=${template.platform}
 maintainer=${template.maintainer}

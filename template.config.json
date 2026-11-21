@@ -2,7 +2,7 @@
   "appName": "fnos-app-family-stock",
   "appTitle": "家藏",
   "displayName": "家藏",
-  "appDescription": "面向多家庭与多地点的家庭物品、库存和临期管理应用。",
+  "appDescription": "记家里的药、囤货、耗材和工具，看放在哪、还剩多少、何时到期。",
   "desktopLaunchName": "fnos-app-family-stock.main",
   "gatewayPrefix": "/app/fnos-app-family-stock",
   "gatewaySocket": "app.sock",
@@ -10,21 +10,21 @@
   "localDevPort": 3333,
   "runtimeDependency": "nodejs_v22",
   "osMinVersion": "1.1.3100",
-  "maintainer": "community",
-  "maintainerUrl": "",
-  "distributor": "community",
-  "distributorUrl": "",
+  "maintainer": "timor-m",
+  "maintainerUrl": "https://github.com/timor-m/fnos-app-family-stock.git",
+  "distributor": "timor-m",
+  "distributorUrl": "https://github.com/timor-m/fnos-app-family-stock.git",
   "source": "thirdparty",
   "platform": "all",
   "runAs": "package",
   "logLevel": "info",
   "releaseNotes": {
-    "summary": "家庭物品、库存和临期管理应用初始化版本。",
+    "summary": "记家里的药、囤货、耗材和工具，看放在哪、还剩多少、何时到期。",
     "highlights": [
-      "多家庭和多地点领域模型",
-      "SQLite 本地持久化",
-      "家庭库存工作台",
-      "保留 fnOS 原生打包流程"
+      "文字录入和拍照录入",
+      "多家庭、房屋地点和存放位置",
+      "临期、低库存和外部推送",
+      "本地 OCR，AI 整理可选"
     ]
   }
 }

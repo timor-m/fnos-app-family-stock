@@ -101,12 +101,14 @@ check(uiEntry?.gatewaySocket === template.gatewaySocket, "gatewaySocket mismatch
 check(uiEntry?.url === template.gatewayPrefix, "gateway URL mismatch");
 check(uiEntry?.port === undefined, "gateway entry must not declare port");
 
-const icon64 = pngDimensions("ICON.PNG");
+const iconRoot = pngDimensions("ICON.PNG");
 const icon256 = pngDimensions("ICON_256.PNG");
-check(icon64?.width === 64 && icon64?.height === 64, "ICON.PNG must be 64 x 64");
+const icon512 = pngDimensions("ICON_512.PNG");
+check(iconRoot?.width === 512 && iconRoot?.height === 512, "ICON.PNG must be 512 x 512");
 check(icon256?.width === 256 && icon256?.height === 256, "ICON_256.PNG must be 256 x 256");
+check(icon512?.width === 512 && icon512?.height === 512, "ICON_512.PNG must be 512 x 512");
 
-for (const iconSize of [64, 256]) {
+for (const iconSize of [64, 256, 512]) {
   const dimensions = pngDimensions(`app/ui/images/icon_${iconSize}.png`);
   check(
     dimensions?.width === iconSize && dimensions?.height === iconSize,

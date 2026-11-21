@@ -13,10 +13,19 @@ import {
   UploadCloud,
   X
 } from "@lucide/vue";
+import ChannelField from "./form/ChannelField.vue";
+import ChoiceChips from "./form/ChoiceChips.vue";
+import DateField from "./form/DateField.vue";
+import ExpiryDateField from "./form/ExpiryDateField.vue";
+import PriceInput from "./form/PriceInput.vue";
+import ShelfLifeField from "./form/ShelfLifeField.vue";
+import WhereField from "./form/WhereField.vue";
+import UnitField from "./form/UnitField.vue";
 import QuantityInput from "./QuantityInput.vue";
-import { apiUrl } from "../utils/api";
+import { apiUrl, request } from "../utils/api";
 
-type Location = { id: string; name: string; isDefault: boolean };
+type StoragePlace = { id: string; name: string };
+type Location = { id: string; name: string; isDefault: boolean; storagePlaces?: StoragePlace[] };
 type Family = { id: string; name: string; locations: Location[] };
 type Category = {
   id: string;
@@ -83,13 +92,6 @@ type UploadState = {
   state: "idle" | "uploading" | "uploaded" | "failed";
   error: string;
 };
-type ApiResponse<T> = {
-  ok: boolean;
-  data: T;
-  statusMessage?: string;
-  error?: { message?: string };
-};
-
 const props = defineProps<{
   open: boolean;
   family: Family | null;
@@ -101,6 +103,8 @@ const emit = defineEmits<{
   close: [];
   updated: [];
   completed: [];
+  "storage-place-created": [];
+  "next-saved": [];
 }>();
 
 const today = new Date().toISOString().slice(0, 10);
@@ -117,6 +121,8 @@ const seenCandidateIds = ref(new Set<string>());
 const preApplyValues = ref(new Map<string, unknown>());
 const hydratedDraftId = ref("");
 const recognitionOpen = ref(false);
+const purchaseExtraOpen = ref(false);
+const captureMode = ref<"quick" | "detailed">("quick");
 const fileInputs: Partial<Record<ImageRole, HTMLInputElement>> = {};
 let pollTimer: number | null = null;
 let saveTimer: number | null = null;
@@ -128,6 +134,7 @@ const form = ref({
   brand: "",
   categoryId: "",
   locationId: "",
+  storagePlaceId: "",
   quantity: 1,
   unit: "件",
   specification: "",
@@ -143,9 +150,9 @@ const form = ref({
 });
 
 const roles: Array<{ key: ImageRole; step: string; title: string; description: string }> = [
-  { key: "product", step: "1", title: "商品主体", description: "拍摄正面包装，识别商品名、品牌和规格" },
-  { key: "label", step: "2", title: "配料与标签", description: "拍摄配料表、净含量和保质期区域" },
-  { key: "date", step: "3", title: "生产日期", description: "靠近喷码拍摄生产或到期日期" }
+  { key: "product", step: "1", title: "商品主体", description: "拍包装正面" },
+  { key: "label", step: "2", title: "配料与标签", description: "拍配料或保质期" },
+  { key: "date", step: "3", title: "生产日期", description: "拍日期" }
 ];
 
 const uploads = ref<Record<ImageRole, UploadState>>({
@@ -154,23 +161,23 @@ const uploads = ref<Record<ImageRole, UploadState>>({
   date: { file: null, preview: "", progress: 0, state: "idle", error: "" }
 });
 
-async function request<T>(path: string, init?: RequestInit) {
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }),
-      ...init?.headers
-    }
-  });
-  const payload = (await response.json()) as ApiResponse<T>;
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error?.message || payload.statusMessage || "请求失败");
-  }
-  return payload.data;
-}
-
 const selectedCategory = computed(
   () => props.categories.find((category) => category.id === form.value.categoryId) || null
+);
+const availableStoragePlaces = computed(
+  () => props.family?.locations.find((location) => location.id === form.value.locationId)?.storagePlaces || []
+);
+const visibleRoles = computed(() =>
+  captureMode.value === "quick"
+    ? [
+        {
+          key: "product" as ImageRole,
+          step: "1",
+          title: "单图快拍（商品 / 标签 / 订单截图）",
+          description: "拍一张就行"
+        }
+      ]
+    : roles
 );
 const hasUploading = computed(() =>
   Object.values(uploads.value).some((item) => item.state === "uploading")
@@ -199,6 +206,17 @@ const recognizedLineCount = computed(() =>
   detail.value?.ocrResults.reduce((total, result) => total + result.lines.length, 0) || 0
 );
 const recognizedCandidateCount = computed(() => detail.value?.candidates.length || 0);
+const purchaseExtraFilled = computed(() =>
+  Boolean(
+    form.value.unitPrice ||
+    form.value.channel ||
+    (form.value.purchasedAt && form.value.purchasedAt !== today)
+  )
+);
+
+function onPurchaseExtraToggle(event: Event) {
+  purchaseExtraOpen.value = (event.target as HTMLDetailsElement).open;
+}
 const canReextractAi = computed(() =>
   Boolean(
     draftId.value &&
@@ -236,6 +254,8 @@ function reset() {
   seenCandidateIds.value = new Set();
   preApplyValues.value = new Map();
   recognitionOpen.value = false;
+  purchaseExtraOpen.value = false;
+  captureMode.value = "quick";
   form.value = {
     name: "",
     brand: "",
@@ -245,6 +265,7 @@ function reset() {
       props.family?.locations.find((location) => location.isDefault)?.id ||
       props.family?.locations[0]?.id ||
       "",
+    storagePlaceId: "",
     quantity: 1,
     unit: "件",
     specification: "",
@@ -350,6 +371,9 @@ function hydrateDetail(data: IntakeDetail) {
   if (hydratedDraftId.value !== data.id) {
     setFromValues(data.userValues || {});
     hydratedDraftId.value = data.id;
+  }
+  if (data.media.some((item) => item.imageRole !== "product")) {
+    captureMode.value = "detailed";
   }
   if (!form.value.categoryId && data.categoryId) form.value.categoryId = data.categoryId;
   if (!form.value.locationId && data.locationId) form.value.locationId = data.locationId;
@@ -651,6 +675,21 @@ async function completeIntake() {
   }
 }
 
+async function saveAndCaptureNext() {
+  if (hasUploading.value || submitting.value || !draftId.value) return;
+  if (saveTimer) window.clearTimeout(saveTimer);
+  await saveDraftValues();
+  const keptLocationId = form.value.locationId;
+  const keptStoragePlaceId = form.value.storagePlaceId;
+  const keptMode = captureMode.value;
+  emit("updated");
+  emit("next-saved");
+  reset();
+  form.value.locationId = keptLocationId;
+  form.value.storagePlaceId = keptStoragePlaceId;
+  captureMode.value = keptMode;
+}
+
 async function close() {
   if (hasUploading.value || submitting.value) return;
   if (saveTimer) window.clearTimeout(saveTimer);
@@ -742,6 +781,10 @@ watch(
   { deep: true }
 );
 
+watch(purchaseExtraFilled, (filled) => {
+  if (filled) purchaseExtraOpen.value = true;
+});
+
 watch(
   () => form.value.categoryId,
   () => {
@@ -770,10 +813,11 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="open" class="modal-backdrop" @click.self="close">
     <section class="modal photo-intake-modal" role="dialog" aria-modal="true" aria-labelledby="photo-intake-title">
+      <span class="sheet-grabber" aria-hidden="true"></span>
       <header class="modal-header">
         <div>
           <h2 id="photo-intake-title">{{ draftId ? "拍照录入草稿" : "拍照录入" }}</h2>
-          <p>图片保存后可关闭窗口，识别任务会在后台继续</p>
+          <p>拍完可以先关掉</p>
         </div>
         <button class="icon-button" type="button" aria-label="关闭" :disabled="hasUploading" @click="close">
           <X :size="20" />
@@ -800,10 +844,6 @@ onBeforeUnmount(() => {
 
           <div v-if="recognitionOpen" class="recognition-detail">
             <div class="recognition-actions">
-              <div>
-                <strong>对当前提取结果不满意？</strong>
-                <span>OCR 原文不完整时可重跑 OCR；OCR 正常但字段不准时只需重新 AI 提取。</span>
-              </div>
               <div class="recognition-action-buttons">
                 <button type="button" class="secondary" :disabled="!canRerunOcr || rerunningOcr" @click="rerunOcr">
                   <LoaderCircle v-if="rerunningOcr" class="spin" :size="14" />
@@ -871,8 +911,29 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section class="photo-steps" aria-label="商品图片">
-          <article v-for="role in roles" :key="role.key" class="photo-step">
+        <div class="capture-mode-bar" role="tablist" aria-label="拍照模式">
+          <button
+            type="button"
+            role="tab"
+            :class="{ active: captureMode === 'quick' }"
+            :aria-selected="captureMode === 'quick'"
+            @click="captureMode = 'quick'"
+          >
+            单图快拍（推荐）
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :class="{ active: captureMode === 'detailed' }"
+            :aria-selected="captureMode === 'detailed'"
+            @click="captureMode = 'detailed'"
+          >
+            三步精拍（主体/标签/日期）
+          </button>
+        </div>
+
+        <section class="photo-steps" :class="{ 'quick-single': captureMode === 'quick' }" aria-label="商品图片">
+          <article v-for="role in visibleRoles" :key="role.key" class="photo-step">
             <div class="step-heading">
               <span>{{ role.step }}</span>
               <div><strong>{{ role.title }}</strong><small>{{ role.description }}</small></div>
@@ -947,8 +1008,8 @@ onBeforeUnmount(() => {
         <section class="purchase-section">
           <header>
             <div>
-              <h3>补充购买信息</h3>
-              <p>可在图片识别期间填写，未填写项稍后也能确认</p>
+              <h3>数量和位置</h3>
+              <p>价格和渠道可以以后再补</p>
             </div>
           </header>
           <div class="form-grid purchase-fields">
@@ -956,10 +1017,26 @@ onBeforeUnmount(() => {
               <span>数量 <em>*</em></span>
               <QuantityInput v-model="form.quantity" required :min="0.01" />
             </label>
-            <label class="field"><span>单位 <em>*</em></span><input v-model.trim="form.unit" required maxlength="12" /></label>
-            <label class="field"><span>购买价格</span><input v-model="form.unitPrice" min="0" step="0.01" type="number" placeholder="单件价格" /></label>
-            <label class="field"><span>购买渠道</span><input v-model.trim="form.channel" maxlength="50" placeholder="例如：线下超市" /></label>
-            <label class="field purchase-date-field"><span>购买日期</span><input v-model="form.purchasedAt" type="date" /></label>
+            <UnitField v-model="form.unit" required />
+            <WhereField
+              :locations="family?.locations || []"
+              :location-id="form.locationId"
+              :place-id="form.storagePlaceId"
+              @update:location-id="form.locationId = $event"
+              @update:place-id="form.storagePlaceId = $event"
+              @created="emit('storage-place-created')"
+            />
+            <details class="extra-fields" :open="purchaseExtraOpen" @toggle="onPurchaseExtraToggle">
+              <summary>{{ purchaseExtraOpen ? "收起价格和渠道" : "补充价格和渠道（可跳过）" }}</summary>
+              <div class="form-grid">
+                <label class="field">
+                  <span>购买价格</span>
+                  <PriceInput v-model="form.unitPrice" placeholder="单件价格" />
+                </label>
+                <label class="field purchase-date-field"><span>购买日期</span><DateField v-model="form.purchasedAt" aria-label="购买日期" /></label>
+                <ChannelField v-model="form.channel" span />
+              </div>
+            </details>
           </div>
         </section>
 
@@ -967,7 +1044,7 @@ onBeforeUnmount(() => {
           <header>
             <div>
               <h3>确认识别结果</h3>
-              <p>识别值只是建议，可直接修改后入库；再次点击已应用项可恢复原值</p>
+              <p>可以直接改，再入库</p>
             </div>
             <span>{{ detail?.candidates.length || 0 }} 个候选字段</span>
           </header>
@@ -995,43 +1072,33 @@ onBeforeUnmount(() => {
               <span>商品名称 <em>*</em></span>
               <input v-model.trim="form.name" required maxlength="80" placeholder="请输入或确认商品名称" />
             </label>
-            <label class="field span-2">
+            <div class="field span-2">
               <span>品类 <em>*</em></span>
-              <select v-model="form.categoryId" required>
-                <option value="" disabled>识别后请确认品类</option>
-                <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-              </select>
-            </label>
+              <ChoiceChips
+                v-model="form.categoryId"
+                :options="categories.map((category) => ({ value: category.id, label: category.name }))"
+                aria-label="品类"
+              />
+            </div>
             <label class="field"><span>品牌</span><input v-model.trim="form.brand" maxlength="50" /></label>
             <label class="field"><span>规格</span><input v-model.trim="form.specification" maxlength="40" /></label>
             <label v-if="selectedCategory?.fields.enabled.includes('ingredients')" class="field span-2">
               <span>配料</span><textarea v-model.trim="form.ingredients" maxlength="2000" rows="3"></textarea>
             </label>
             <label v-if="selectedCategory?.fields.expirationEnabled" class="field">
-              <span>生产日期</span><input v-model="form.productionDate" type="date" />
+              <span>生产日期</span><DateField v-model="form.productionDate" aria-label="生产日期" />
             </label>
-            <template v-if="selectedCategory?.fields.expirationEnabled">
-              <label class="field">
-                <span>保质期</span>
-                <input v-model="form.shelfLifeValue" min="1" step="1" type="number" />
-              </label>
-              <label class="field">
-                <span>保质期单位</span>
-                <select v-model="form.shelfLifeUnit">
-                  <option value="day">天</option><option value="month">个月</option><option value="year">年</option>
-                </select>
-              </label>
-              <label class="field"><span>到期日期</span><input v-model="form.expirationDate" type="date" /></label>
-            </template>
-            <label class="field span-2">
-              <span>存放地点 <em>*</em></span>
-              <select v-model="form.locationId" required>
-                <option value="" disabled>请选择存放地点</option>
-                <option v-for="location in family?.locations || []" :key="location.id" :value="location.id">
-                  {{ location.name }}
-                </option>
-              </select>
-            </label>
+            <ShelfLifeField
+              v-if="selectedCategory?.fields.expirationEnabled"
+              v-model="form.shelfLifeValue"
+              v-model:unit="form.shelfLifeUnit"
+            />
+            <ExpiryDateField
+              v-if="selectedCategory?.fields.expirationEnabled"
+              v-model="form.expirationDate"
+              :base-date="form.productionDate || form.purchasedAt"
+              span
+            />
           </div>
         </section>
 
@@ -1040,10 +1107,20 @@ onBeforeUnmount(() => {
         <footer class="modal-footer">
           <p v-if="detail?.status === 'completed'"><CheckCircle2 :size="15" />已自动入库，可关闭窗口</p>
           <p v-else-if="draftId && !canReview"><CheckCircle2 :size="15" />草稿已保存，可稍后继续</p>
+          <button
+            v-if="draftId && detail?.status !== 'completed'"
+            class="secondary-action"
+            type="button"
+            :disabled="hasUploading || submitting"
+            @click="saveAndCaptureNext"
+          >
+            <Camera :size="15" />
+            保存并拍下一件
+          </button>
           <button class="cancel-button" type="button" :disabled="hasUploading || submitting" @click="close">
             {{ draftId ? "关闭" : "取消" }}
           </button>
-          <button v-if="canReview" class="primary-button" type="submit" :disabled="submitting">
+          <button v-if="canReview" class="primary-button" type="submit" :disabled="submitting || !form.categoryId || !form.locationId">
             <LoaderCircle v-if="submitting" class="spin" :size="18" />
             <CheckCircle2 v-else :size="18" />
             {{ submitting ? "正在入库" : "确认并入库" }}
@@ -1315,11 +1392,42 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   gap: 7px;
 }
+.capture-mode-bar {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.capture-mode-bar button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.capture-mode-bar button.active {
+  background: var(--surface);
+  color: var(--green);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
 .photo-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 0;
+}
+.photo-steps.quick-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.photo-steps.quick-single .image-picker {
+  max-height: 240px;
+  aspect-ratio: 16 / 9;
 }
 .photo-step {
   min-width: 0;
@@ -1467,8 +1575,8 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 .purchase-fields {
-  grid-template-columns: minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.95fr);
-  gap: 10px;
+  grid-template-columns: minmax(168px, 0.8fr) minmax(0, 1.4fr);
+  gap: 12px;
   margin-top: 13px;
 }
 
@@ -1648,8 +1756,7 @@ onBeforeUnmount(() => {
     justify-content: flex-start;
   }
   .purchase-fields {
-    grid-template-columns: minmax(0, 1fr) minmax(72px, 0.72fr);
-    gap: 10px;
+    grid-template-columns: 1fr;
   }
   .purchase-fields .field input,
   .purchase-fields .field select,
@@ -1659,8 +1766,9 @@ onBeforeUnmount(() => {
   }
   .purchase-fields .field:nth-child(3),
   .purchase-fields .field:nth-child(4),
+  .purchase-fields .span-2,
   .purchase-date-field {
-    grid-column: span 2;
+    grid-column: auto;
   }
 }
 @media (max-width: 430px) {
@@ -1670,7 +1778,7 @@ onBeforeUnmount(() => {
   .photo-step .image-picker { width: 112px; }
   .photo-step .image-placeholder span { display: none; }
   .purchase-fields {
-    grid-template-columns: minmax(0, 1fr) minmax(64px, 0.6fr);
+    grid-template-columns: 1fr;
   }
   .purchase-date-field input[type="date"] {
     padding-right: 8px;

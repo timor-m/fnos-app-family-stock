@@ -37,3 +37,22 @@ export function expiryClass(days: number | null) {
   if (days <= 7) return "warning";
   return "notice";
 }
+
+export function computeQuickExpiryDate(baseDate: string | null | undefined, addMonths: number) {
+  const base =
+    baseDate && /^\d{4}-\d{2}-\d{2}$/.test(baseDate)
+      ? new Date(`${baseDate}T00:00:00`)
+      : new Date();
+  const year = base.getFullYear();
+  const month = base.getMonth();
+  const day = base.getDate();
+  const targetMonthIndex = month + addMonths;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const maxDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+  const clampedDay = Math.min(day, maxDay);
+  const yyyy = String(targetYear);
+  const mm = String(normalizedMonth + 1).padStart(2, "0");
+  const dd = String(clampedDay).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}

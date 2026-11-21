@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { Bot, CheckCircle2, KeyRound, LoaderCircle, PlugZap, Save, TriangleAlert } from "@lucide/vue";
-import { apiUrl } from "../utils/api";
+import FormSelect from "./form/FormSelect.vue";
+import { request } from "../utils/api";
 
 type Statistics = {
   totalCalls: number;
@@ -40,14 +41,6 @@ type AiSettings = {
   statistics: Statistics;
 };
 
-type ApiResponse<T> = {
-  ok?: boolean;
-  data?: T;
-  error?: { message?: string } | boolean;
-  message?: string;
-  statusMessage?: string;
-  statusText?: string;
-};
 const loading = ref(true);
 const saving = ref(false);
 const testing = ref(false);
@@ -112,19 +105,6 @@ const currentProviderSettings = computed(
   () => settings.value.providerSettings[settings.value.provider]
 );
 
-async function request<T>(path: string, init?: RequestInit) {
-  const response = await fetch(apiUrl(path), {
-    headers: { "content-type": "application/json", ...init?.headers },
-    ...init
-  });
-  const payload = await response.json() as ApiResponse<T>;
-  if (!response.ok || !payload.ok) {
-    const nestedMessage = payload.error && typeof payload.error === "object" ? payload.error.message : "";
-    throw new Error(nestedMessage || payload.message || payload.statusMessage || payload.statusText || "请求失败");
-  }
-  return payload.data as T;
-}
-
 async function load() {
   loading.value = true;
   try {
@@ -161,7 +141,7 @@ function changeProvider() {
   apiKey.value = "";
   message.value = settings.value.apiKeyConfigured
     ? { tone: "success", text: `已切换到 ${provider.label}，并载入该服务商已保存的配置。` }
-    : { tone: "danger", text: `已切换到 ${provider.label}，该服务商还没有配置 API Key。` };
+    : { tone: "notice", text: `已切换到 ${provider.label}。该服务商还没有配置 API Key。` };
 }
 
 async function save() {
@@ -230,11 +210,12 @@ onMounted(() => void load());
       <div class="ai-form-grid">
         <label class="field">
           <span>服务商</span>
-          <select v-model="settings.provider" @change="changeProvider">
-            <option v-for="provider in settings.providers" :key="provider.key" :value="provider.key">
-              {{ provider.label }}
-            </option>
-          </select>
+          <FormSelect
+            :model-value="settings.provider"
+            :options="settings.providers.map((provider) => ({ value: provider.key, label: provider.label }))"
+            aria-label="服务商"
+            @update:model-value="settings.provider = $event as AiProviderKey; changeProvider()"
+          />
         </label>
         <label class="field">
           <span>模型</span>
@@ -254,7 +235,12 @@ onMounted(() => void load());
         </label>
         <label class="field">
           <span>失败重试</span>
-          <select v-model.number="settings.maxRetries"><option :value="0">不重试</option><option :value="1">1 次</option><option :value="2">2 次</option><option :value="3">3 次</option></select>
+          <FormSelect
+            :model-value="String(settings.maxRetries)"
+            :options="[{ value: '0', label: '不重试' }, { value: '1', label: '1 次' }, { value: '2', label: '2 次' }, { value: '3', label: '3 次' }]"
+            aria-label="失败重试"
+            @update:model-value="settings.maxRetries = Number($event)"
+          />
         </label>
       </div>
 
@@ -305,7 +291,9 @@ onMounted(() => void load());
 .key-input input, .input-suffix input { height: 37px; border: 0; }
 .input-suffix span { padding-right: 10px; color: var(--muted); font-size: 11px; }
 .ai-message { display: flex; align-items: center; gap: 6px; margin: 13px 0 0; font-size: 11px; }
-.ai-message.success { color: var(--green); }.ai-message.danger { color: var(--red); }
+.ai-message.success { color: var(--green); }
+.ai-message.notice { color: var(--muted); }
+.ai-message.danger { color: var(--red); }
 footer { display: flex; justify-content: flex-end; gap: 9px; margin-top: 17px; border-top: 1px solid var(--line); padding-top: 14px; }
 .test-button { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--text); padding: 0 13px; font-weight: 700; }
 @media (max-width: 600px) {

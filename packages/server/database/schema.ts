@@ -253,24 +253,11 @@ CREATE INDEX IF NOT EXISTS ai_extraction_runs_stats_idx
 
 export const systemCategories = [
   {
-    id: "category-food",
-    key: "food",
-    name: "食品饮料",
-    icon: "utensils",
-    sortOrder: 10,
-    fields: {
-      enabled: ["ingredients", "productionDate", "shelfLife", "expirationDate", "storageCondition"],
-      required: [],
-      defaultUnit: "件",
-      expirationEnabled: true
-    }
-  },
-  {
     id: "category-medicine",
     key: "medicine",
-    name: "药品",
+    name: "药品保健",
     icon: "pill",
-    sortOrder: 20,
+    sortOrder: 10,
     fields: {
       enabled: ["batchNumber", "specification", "expirationDate", "notes"],
       required: ["expirationDate"],
@@ -279,9 +266,35 @@ export const systemCategories = [
     }
   },
   {
+    id: "category-food",
+    key: "food",
+    name: "囤货食品",
+    icon: "utensils",
+    sortOrder: 20,
+    fields: {
+      enabled: ["ingredients", "productionDate", "shelfLife", "expirationDate", "storageCondition"],
+      required: [],
+      defaultUnit: "件",
+      expirationEnabled: true
+    }
+  },
+  {
+    id: "category-consumable",
+    key: "consumable",
+    name: "家电耗材",
+    icon: "filter",
+    sortOrder: 25,
+    fields: {
+      enabled: ["model", "specification", "expirationDate", "notes"],
+      required: [],
+      defaultUnit: "个",
+      expirationEnabled: true
+    }
+  },
+  {
     id: "category-daily",
     key: "daily",
-    name: "日化用品",
+    name: "日化母婴",
     icon: "spray-can",
     sortOrder: 30,
     fields: {
@@ -320,7 +333,7 @@ export const systemCategories = [
   {
     id: "category-clothing",
     key: "clothing",
-    name: "衣物",
+    name: "换季收纳",
     icon: "shirt",
     sortOrder: 60,
     fields: {

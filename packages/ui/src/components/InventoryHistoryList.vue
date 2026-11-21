@@ -1,35 +1,15 @@
 <script setup lang="ts">
-import { History, PackageOpen } from "@lucide/vue";
+import { History, PackageOpen, PackagePlus } from "@lucide/vue";
 import { formatDate, formatDateTime, formatQuantity } from "../utils/format";
-
-type InventoryHistoryItem = {
-  transactionId: string;
-  transactionType: "consume" | "discard" | "transfer_out" | "adjust";
-  initialQuantity: number;
-  unit: string;
-  reason: string | null;
-  finalizedAt: string;
-  operatorUserId: string;
-  operatorName: string | null;
-  batchId: string;
-  batchStatus: "depleted" | "discarded";
-  currentQuantity: number;
-  productId: string;
-  name: string;
-  brand: string | null;
-  categoryName: string;
-  categoryKey: string;
-  fromLocationId: string | null;
-  fromLocationName: string | null;
-  toLocationId: string | null;
-  toLocationName: string | null;
-  expirationDate: string | null;
-  unitPrice: number | null;
-  channel: string | null;
-};
+import type { InventoryHistoryItem } from "../types/api";
 
 defineProps<{
   items: InventoryHistoryItem[];
+  filtered?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (event: "restock", item: InventoryHistoryItem): void;
 }>();
 
 const operationMap: Record<InventoryHistoryItem["transactionType"], { label: string; tone: string }> = {
@@ -71,8 +51,9 @@ function locationText(item: InventoryHistoryItem) {
 <template>
   <div v-if="!items.length" class="empty-state">
     <PackageOpen :size="32" />
-    <strong>暂无历史物品</strong>
-    <span>已耗尽、已丢弃或已完全转移的物品会显示在这里</span>
+    <strong>{{ filtered ? "没有匹配的历史物品" : "暂无历史物品" }}</strong>
+    <span v-if="filtered">换个词，或清掉搜索</span>
+    <span v-else>已耗尽、已丢弃或已完全转移的物品会显示在这里</span>
   </div>
 
   <div v-else class="history-list">
@@ -89,7 +70,12 @@ function locationText(item: InventoryHistoryItem) {
               <template v-if="item.brand"> · {{ item.brand }}</template>
             </span>
           </div>
-          <div class="history-quantity">原数量 {{ quantityText(item) }}</div>
+          <div class="history-right-actions">
+            <div class="history-quantity">原数量 {{ quantityText(item) }}</div>
+            <button class="quick-action-btn finish" type="button" @click="emit('restock', item)">
+              <PackagePlus :size="13" />补货
+            </button>
+          </div>
         </div>
 
         <div class="history-meta">

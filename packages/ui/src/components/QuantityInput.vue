@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ "update:modelValue": [value: number] }>();
 
 function update(value: number) {
+  if (!Number.isFinite(value)) return;
   const maximum = props.max ?? Number.POSITIVE_INFINITY;
   const next = Math.min(maximum, Math.max(props.min, value));
   emit("update:modelValue", Number(next.toFixed(2)));

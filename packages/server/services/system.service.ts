@@ -14,6 +14,7 @@ export function getSystemSummary() {
     gatewayPrefix: config.gatewayPrefix,
     appPort: config.appPort,
     runtime: "nitro",
+    nodeVersion: process.version,
     nodePlatform: platform(),
     nodeArch: arch(),
     processUptimeSec: Math.floor(process.uptime()),

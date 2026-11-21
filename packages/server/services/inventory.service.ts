@@ -5,8 +5,10 @@ import { createId } from "../utils/identifier";
 import type { RequestUser } from "../utils/request-user";
 
 export type ManualStockInInput = {
+  productId?: string | null;
   familyId: string;
   locationId: string;
+  storagePlaceId?: string | null;
   categoryId: string;
   name: string;
   brand?: string | null;
@@ -28,6 +30,7 @@ export type ManualStockInInput = {
 
 export type InventoryBatchUpdateInput = {
   categoryId: string;
+  storagePlaceId?: string | null;
   name: string;
   brand?: string | null;
   specification?: string | null;
@@ -53,6 +56,7 @@ export type StockOperationInput =
       operationType: "transfer";
       quantity: number;
       toLocationId: string;
+      toStoragePlaceId?: string | null;
       reason: string | null;
     }
   | {
@@ -191,8 +195,10 @@ export function parseManualStockInInput(body: Record<string, unknown>): ManualSt
   }
 
   return {
+    productId: optionalText(body.productId),
     familyId,
     locationId,
+    storagePlaceId: optionalText(body.storagePlaceId),
     categoryId,
     name,
     brand: optionalText(body.brand),
@@ -272,6 +278,7 @@ export function parseInventoryBatchUpdateInput(body: Record<string, unknown>): I
 
   return {
     categoryId,
+    storagePlaceId: optionalText(body.storagePlaceId),
     name,
     brand: optionalText(body.brand),
     specification: optionalText(body.specification),
@@ -309,7 +316,40 @@ export function createManualStockIn(
     });
   }
 
-  const productId = createId("product");
+  let storagePlaceId: string | null = input.storagePlaceId ?? null;
+  if (storagePlaceId) {
+    const place = db.prepare(`
+      SELECT 1
+      FROM storage_places
+      WHERE id = ? AND location_id = ?
+    `).get(storagePlaceId, input.locationId);
+    if (!place) {
+      storagePlaceId = null;
+    }
+  }
+
+  let existingProductId: string | null = null;
+  if (input.productId) {
+    const existing = db.prepare(`
+      SELECT id
+      FROM products
+      WHERE id = ? AND family_id = ? AND deleted_at IS NULL
+    `).get(input.productId, input.familyId) as { id: string } | undefined;
+    if (existing) {
+      existingProductId = existing.id;
+    }
+  } else if (input.barcode) {
+    const existingByBarcode = db.prepare(`
+      SELECT id
+      FROM products
+      WHERE family_id = ? AND barcode = ? AND deleted_at IS NULL
+    `).get(input.familyId, input.barcode) as { id: string } | undefined;
+    if (existingByBarcode) {
+      existingProductId = existingByBarcode.id;
+    }
+  }
+
+  const productId = existingProductId || createId("product");
   const batchId = createId("batch");
   const transactionId = createId("txn");
 
@@ -317,37 +357,66 @@ export function createManualStockIn(
     db.exec("BEGIN IMMEDIATE");
   }
   try {
-    db.prepare(`
-      INSERT INTO products (
-        id, family_id, category_id, name, brand, barcode,
-        specification, ingredients, default_unit, low_stock_threshold, cover_image_id
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      productId,
-      input.familyId,
-      input.categoryId,
-      input.name,
-      input.brand ?? null,
-      input.barcode ?? null,
-      input.specification ?? null,
-      input.ingredients ?? null,
-      input.unit,
-      input.lowStockThreshold ?? null,
-      input.coverImageId ?? null
-    );
+    if (existingProductId) {
+      db.prepare(`
+        UPDATE products
+        SET category_id = ?,
+            name = ?,
+            brand = COALESCE(?, brand),
+            barcode = COALESCE(?, barcode),
+            specification = COALESCE(?, specification),
+            ingredients = COALESCE(?, ingredients),
+            default_unit = ?,
+            low_stock_threshold = COALESCE(?, low_stock_threshold),
+            cover_image_id = COALESCE(?, cover_image_id),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        input.categoryId,
+        input.name,
+        input.brand ?? null,
+        input.barcode ?? null,
+        input.specification ?? null,
+        input.ingredients ?? null,
+        input.unit,
+        input.lowStockThreshold ?? null,
+        input.coverImageId ?? null,
+        productId
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO products (
+          id, family_id, category_id, name, brand, barcode,
+          specification, ingredients, default_unit, low_stock_threshold, cover_image_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        productId,
+        input.familyId,
+        input.categoryId,
+        input.name,
+        input.brand ?? null,
+        input.barcode ?? null,
+        input.specification ?? null,
+        input.ingredients ?? null,
+        input.unit,
+        input.lowStockThreshold ?? null,
+        input.coverImageId ?? null
+      );
+    }
 
     db.prepare(`
       INSERT INTO inventory_batches (
-        id, product_id, location_id, current_quantity, unit,
+        id, product_id, location_id, storage_place_id, current_quantity, unit,
         purchased_at, production_date, shelf_life_value, shelf_life_unit,
         expiration_date, unit_price, channel
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       batchId,
       productId,
       input.locationId,
+      storagePlaceId,
       input.quantity,
       input.unit,
       input.purchasedAt ?? null,
@@ -401,6 +470,7 @@ export function updateInventoryBatchInfo(batchId: string, input: InventoryBatchU
       SELECT
         b.id AS batchId,
         b.product_id AS productId,
+        b.location_id AS locationId,
         p.family_id AS familyId,
         b.status
       FROM inventory_batches b
@@ -409,7 +479,7 @@ export function updateInventoryBatchInfo(batchId: string, input: InventoryBatchU
         ON fm.family_id = p.family_id AND fm.user_id = ?
       WHERE b.id = ?
         AND p.deleted_at IS NULL
-    `).get(user.id, batchId) as { batchId: string; productId: string; familyId: string; status: string } | undefined;
+    `).get(user.id, batchId) as { batchId: string; productId: string; locationId: string; familyId: string; status: string } | undefined;
 
     if (!batch) {
       throw createError({
@@ -431,6 +501,18 @@ export function updateInventoryBatchInfo(batchId: string, input: InventoryBatchU
         statusCode: 404,
         statusMessage: "品类不存在"
       });
+    }
+
+    let storagePlaceId: string | null = input.storagePlaceId ?? null;
+    if (storagePlaceId) {
+      const place = db.prepare(`
+        SELECT 1
+        FROM storage_places
+        WHERE id = ? AND location_id = ?
+      `).get(storagePlaceId, batch.locationId);
+      if (!place) {
+        storagePlaceId = null;
+      }
     }
 
     db.prepare(`
@@ -457,7 +539,8 @@ export function updateInventoryBatchInfo(batchId: string, input: InventoryBatchU
 
     db.prepare(`
       UPDATE inventory_batches
-      SET unit = ?,
+      SET storage_place_id = ?,
+          unit = ?,
           purchased_at = ?,
           production_date = ?,
           shelf_life_value = ?,
@@ -468,6 +551,7 @@ export function updateInventoryBatchInfo(batchId: string, input: InventoryBatchU
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
+      storagePlaceId,
       input.unit,
       input.purchasedAt ?? null,
       input.productionDate ?? null,
@@ -542,6 +626,7 @@ export function parseStockOperationInput(body: Record<string, unknown>): StockOp
       operationType,
       quantity,
       toLocationId,
+      toStoragePlaceId: optionalText(body.toStoragePlaceId),
       reason
     };
   }
@@ -683,18 +768,31 @@ export function applyStockOperation(batchId: string, input: StockOperationInput,
           });
         }
 
+        let toStoragePlaceId: string | null = input.toStoragePlaceId ?? null;
+        if (toStoragePlaceId) {
+          const place = db.prepare(`
+            SELECT 1
+            FROM storage_places
+            WHERE id = ? AND location_id = ?
+          `).get(toStoragePlaceId, input.toLocationId);
+          if (!place) {
+            toStoragePlaceId = null;
+          }
+        }
+
         destinationBatchId = createId("batch");
         db.prepare(`
           INSERT INTO inventory_batches (
-            id, product_id, location_id, current_quantity, unit,
+            id, product_id, location_id, storage_place_id, current_quantity, unit,
             purchased_at, production_date, shelf_life_value, shelf_life_unit,
             expiration_date, unit_price, channel, status
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
         `).run(
           destinationBatchId,
           batch.productId,
           input.toLocationId,
+          toStoragePlaceId,
           input.quantity,
           batch.unit,
           batch.purchasedAt,
@@ -831,7 +929,6 @@ export function getInventoryHistory(user: RequestUser, familyId: string, locatio
         batch_id,
         SUM(CASE
           WHEN transaction_type IN ('stock_in', 'transfer_in') THEN quantity
-          WHEN transaction_type = 'adjust' AND quantity > 0 THEN quantity
           ELSE 0
         END) AS initial_quantity
       FROM inventory_transactions

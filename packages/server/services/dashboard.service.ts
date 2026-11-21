@@ -5,6 +5,7 @@ import { getAppConfig } from "../utils/runtime-config";
 
 type SummaryRow = {
   productCount: number;
+  activeBatchCount: number;
   totalQuantity: number;
   expiringCount: number;
   expiredCount: number;
@@ -27,6 +28,8 @@ type InventoryRow = {
   unit: string;
   locationId: string;
   locationName: string;
+  storagePlaceId: string | null;
+  storagePlaceName: string | null;
   purchasedAt: string | null;
   productionDate: string | null;
   shelfLifeValue: number | null;
@@ -44,8 +47,10 @@ type InventoryRow = {
 
 type LowStockRow = {
   productId: string;
+  categoryId: string;
   name: string;
   brand: string | null;
+  specification: string | null;
   quantity: number;
   unit: string;
   threshold: number;
@@ -55,6 +60,8 @@ type DashboardOptions = {
   inventoryLimit?: number;
   inventoryOffset?: number;
   search?: string;
+  storagePlaceId?: string;
+  stock?: "low";
 };
 
 function clampPageLimit(value: number | undefined) {
@@ -69,7 +76,7 @@ function clampPageOffset(value: number | undefined) {
 
 function matchesInventorySearch(row: InventoryRow & { coverImageUrl: string | null }, search: string) {
   if (!search) return true;
-  return [row.name, row.brand, row.specification, row.categoryName, row.locationName]
+  return [row.name, row.brand, row.specification, row.categoryName, row.locationName, row.storagePlaceName]
     .filter(Boolean)
     .some((value) => value!.toLowerCase().includes(search));
 }
@@ -84,6 +91,7 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
     return {
       summary: {
         productCount: 0,
+        activeBatchCount: 0,
         totalQuantity: 0,
         expiringCount: 0,
         expiredCount: 0,
@@ -97,11 +105,21 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
       inventoryCount: 0,
       inventoryOffset,
       inventoryLimit,
-      inventoryHasMore: false
+      inventoryHasMore: false,
+      locationBatchCounts: {}
     };
   }
-  const locationFilter = locationId ? "AND b.location_id = ?" : "";
-  const locationParams = locationId ? [familyId, locationId] : [familyId];
+  const filters: string[] = [];
+  const locationParams: string[] = [familyId];
+  if (locationId) {
+    filters.push("AND b.location_id = ?");
+    locationParams.push(locationId);
+  }
+  if (options.storagePlaceId) {
+    filters.push("AND b.storage_place_id = ?");
+    locationParams.push(options.storagePlaceId);
+  }
+  const locationFilter = filters.join(" ");
 
   const inventoryRows = db.prepare(`
     SELECT
@@ -119,6 +137,8 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
       b.unit,
       l.id AS locationId,
       l.name AS locationName,
+      sp.id AS storagePlaceId,
+      sp.name AS storagePlaceName,
       b.purchased_at AS purchasedAt,
       b.production_date AS productionDate,
       b.shelf_life_value AS shelfLifeValue,
@@ -139,6 +159,7 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
     JOIN products p ON p.id = b.product_id
     JOIN category_templates c ON c.id = p.category_id
     JOIN locations l ON l.id = b.location_id
+    LEFT JOIN storage_places sp ON sp.id = b.storage_place_id
     LEFT JOIN inventory_transactions entry_tx
       ON entry_tx.id = (
         SELECT it.id
@@ -164,18 +185,13 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
     coverImageUrl: row.coverImageId ? `${gatewayPrefix}/api/media/${row.coverImageId}?variant=thumb` : null
   }));
   const searchedInventory = inventory.filter((row) => matchesInventorySearch(row, search));
-  const inventoryPage = searchedInventory.slice(inventoryOffset, inventoryOffset + inventoryLimit);
-  const productIds = new Set(inventory.map((row) => row.productId));
-  const expiring = inventory.filter(
-    (row) => row.daysRemaining !== null && row.daysRemaining >= 0 && row.daysRemaining <= 30
-  );
-  const expired = inventory.filter((row) => row.daysRemaining !== null && row.daysRemaining < 0);
-
   const lowStockRows = db.prepare(`
     SELECT
       p.id AS productId,
+      p.category_id AS categoryId,
       p.name,
       p.brand,
+      p.specification,
       COALESCE(SUM(CASE WHEN b.status = 'active' THEN b.current_quantity ELSE 0 END), 0) AS quantity,
       p.default_unit AS unit,
       p.low_stock_threshold AS threshold
@@ -187,8 +203,29 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
     GROUP BY p.id
     HAVING quantity <= threshold
     ORDER BY quantity ASC, p.name
-    LIMIT 8
   `).all(familyId) as LowStockRow[];
+  const lowStockIds = new Set(lowStockRows.map((row) => row.productId));
+  const listedInventory = options.stock === "low"
+    ? searchedInventory.filter((row) => lowStockIds.has(row.productId))
+    : searchedInventory;
+  const inventoryPage = listedInventory.slice(inventoryOffset, inventoryOffset + inventoryLimit);
+  const productIds = new Set(inventory.map((row) => row.productId));
+  const expiring = inventory.filter(
+    (row) => row.daysRemaining !== null && row.daysRemaining >= 0 && row.daysRemaining <= 30
+  );
+  const expired = inventory.filter((row) => row.daysRemaining !== null && row.daysRemaining < 0);
+  const locationCountRows = db.prepare(`
+    SELECT b.location_id AS locationId, COUNT(*) AS batchCount
+    FROM inventory_batches b
+    JOIN products p ON p.id = b.product_id
+    WHERE p.family_id = ?
+      AND p.deleted_at IS NULL
+      AND b.status = 'active'
+    GROUP BY b.location_id
+  `).all(familyId) as Array<{ locationId: string; batchCount: number }>;
+  const locationBatchCounts = Object.fromEntries(
+    locationCountRows.map((row) => [row.locationId, Number(row.batchCount)])
+  );
 
   const pendingRow = db.prepare(`
     SELECT COUNT(*) AS pendingCount
@@ -199,6 +236,7 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
 
   const summary: SummaryRow = {
     productCount: productIds.size,
+    activeBatchCount: inventory.length,
     totalQuantity: inventory.reduce((total, row) => total + Number(row.quantity), 0),
     expiringCount: expiring.length,
     expiredCount: expired.length,
@@ -208,8 +246,8 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
 
   return {
     summary,
-    expiring: [...expired, ...expiring].slice(0, 8),
-    lowStock: lowStockRows.map((row) => ({
+    expiring: [...expired, ...expiring],
+    lowStock: lowStockRows.slice(0, 8).map((row) => ({
       ...row,
       quantity: Number(row.quantity),
       threshold: Number(row.threshold)
@@ -218,9 +256,10 @@ export function getDashboard(user: RequestUser, familyId: string, locationId?: s
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 8),
     inventory: inventoryPage,
-    inventoryCount: searchedInventory.length,
+    inventoryCount: listedInventory.length,
     inventoryOffset,
     inventoryLimit,
-    inventoryHasMore: inventoryOffset + inventoryPage.length < searchedInventory.length
+    inventoryHasMore: inventoryOffset + inventoryPage.length < listedInventory.length,
+    locationBatchCounts
   };
 }

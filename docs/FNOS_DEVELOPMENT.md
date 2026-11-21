@@ -98,8 +98,9 @@ disable_authorization_path=true
 
 ## 图标
 
-- `ICON.PNG`：64 x 64
+- `ICON.PNG`：512 x 512，用于应用中心详情页
 - `ICON_256.PNG`：256 x 256
+- `ICON_512.PNG`：512 x 512
 - 入口图标：`app/ui/images/icon_{0}.png`
 
 发布前确认 PNG 使用 sRGB、单文件不超过 1024 KB，并在 64px 下保持清晰。

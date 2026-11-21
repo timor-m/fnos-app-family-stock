@@ -1,6 +1,6 @@
 import { createError } from "h3";
 import { getDatabase } from "../database/client";
-import { requireFamilyRole } from "../utils/access-control";
+import { requireFamilyAccess, requireFamilyRole } from "../utils/access-control";
 import { createId } from "../utils/identifier";
 import type { RequestUser } from "../utils/request-user";
 
@@ -134,6 +134,18 @@ export function listFamiliesForUser(user: RequestUser) {
     ORDER BY l.is_default DESC, l.created_at
   `).all(user.id) as LocationRow[];
 
+  const storagePlaces = db.prepare(`
+    SELECT
+      sp.id,
+      sp.location_id AS locationId,
+      sp.name
+    FROM storage_places sp
+    JOIN locations l ON l.id = sp.location_id
+    JOIN family_members fm
+      ON fm.family_id = l.family_id AND fm.user_id = ?
+    ORDER BY sp.created_at, sp.name
+  `).all(user.id) as Array<{ id: string; locationId: string; name: string }>;
+
   return families.map((family) => ({
     id: family.id,
     name: family.name,
@@ -145,7 +157,13 @@ export function listFamiliesForUser(user: RequestUser) {
         id: location.id,
         name: location.name,
         kind: location.kind,
-        isDefault: Boolean(location.isDefault)
+        isDefault: Boolean(location.isDefault),
+        storagePlaces: storagePlaces
+          .filter((place) => place.locationId === location.id)
+          .map((place) => ({
+            id: place.id,
+            name: place.name
+          }))
       }))
   }));
 }
@@ -389,4 +407,106 @@ export function deleteLocation(user: RequestUser, locationId: string) {
   }
 
   return { locationId };
+}
+
+export function createStoragePlace(user: RequestUser, locationId: string, nameValue: unknown) {
+  const db = getDatabase();
+  const location = db.prepare(`
+    SELECT family_id AS familyId
+    FROM locations
+    WHERE id = ?
+  `).get(locationId) as { familyId: string } | undefined;
+
+  if (!location) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "地点不存在"
+    });
+  }
+
+  requireFamilyAccess(user, location.familyId);
+  const name = requiredName(nameValue, "存放位置名称");
+  const storagePlaceId = createId("place");
+
+  try {
+    db.prepare(`
+      INSERT INTO storage_places (id, location_id, name)
+      VALUES (?, ?, ?)
+    `).run(storagePlaceId, locationId, name);
+  } catch (error) {
+    throwConflict(error, "该地点下已存在同名存放位置");
+  }
+
+  return {
+    storagePlaceId,
+    locationId,
+    name
+  };
+}
+
+export function renameStoragePlace(user: RequestUser, storagePlaceId: string, nameValue: unknown) {
+  const db = getDatabase();
+  const place = db.prepare(`
+    SELECT sp.id, sp.location_id AS locationId, l.family_id AS familyId
+    FROM storage_places sp
+    JOIN locations l ON l.id = sp.location_id
+    WHERE sp.id = ?
+  `).get(storagePlaceId) as { id: string; locationId: string; familyId: string } | undefined;
+
+  if (!place) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "存放位置不存在"
+    });
+  }
+
+  requireFamilyRole(user, place.familyId);
+  const name = requiredName(nameValue, "存放位置名称");
+
+  try {
+    db.prepare(`
+      UPDATE storage_places
+      SET name = ?
+      WHERE id = ?
+    `).run(name, storagePlaceId);
+  } catch (error) {
+    throwConflict(error, "该地点下已存在同名存放位置");
+  }
+
+  return { storagePlaceId, locationId: place.locationId, name };
+}
+
+export function deleteStoragePlace(user: RequestUser, storagePlaceId: string) {
+  const db = getDatabase();
+  const place = db.prepare(`
+    SELECT sp.id, sp.location_id AS locationId, l.family_id AS familyId
+    FROM storage_places sp
+    JOIN locations l ON l.id = sp.location_id
+    WHERE sp.id = ?
+  `).get(storagePlaceId) as { id: string; locationId: string; familyId: string } | undefined;
+
+  if (!place) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "存放位置不存在"
+    });
+  }
+
+  requireFamilyRole(user, place.familyId);
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      UPDATE inventory_batches
+      SET storage_place_id = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE storage_place_id = ?
+    `).run(storagePlaceId);
+    db.prepare("DELETE FROM storage_places WHERE id = ?").run(storagePlaceId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return { storagePlaceId, locationId: place.locationId };
 }

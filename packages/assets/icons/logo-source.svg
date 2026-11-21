@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="132" y1="84" x2="892" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B6B45"/>
+      <stop offset="0.58" stop-color="#20A66A"/>
+      <stop offset="1" stop-color="#83D889"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="240" y1="180" x2="790" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4FFF5"/>
+    </linearGradient>
+    <linearGradient id="box" x1="320" y1="420" x2="710" y2="790" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#83D889"/>
+      <stop offset="1" stop-color="#45B974"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="248" fill="url(#bg)"/>
+  <path d="M512 176L854 424L796 502L512 294L228 502L170 424L512 176Z" fill="#063C35" fill-opacity="0.18"/>
+  <rect x="214" y="372" width="596" height="500" rx="86" fill="#063C35" fill-opacity="0.18"/>
+  <path d="M512 148L872 410L806 498L512 282L218 498L152 410L512 148Z" fill="url(#paper)"/>
+  <rect x="194" y="348" width="636" height="492" rx="86" fill="url(#paper)"/>
+  <path d="M238 432L512 232L786 432" stroke="#0B6B45" stroke-width="62" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M286 596H738" stroke="#0B6B45" stroke-width="34" stroke-linecap="round" opacity="0.9"/>
+  <path d="M312 752H712" stroke="#0B6B45" stroke-width="34" stroke-linecap="round" opacity="0.9"/>
+  <rect x="384" y="440" width="256" height="120" rx="28" fill="url(#box)"/>
+  <path d="M384 484H640" stroke="#CFF1D7" stroke-width="30" stroke-linecap="round" opacity="0.92"/>
+  <rect x="314" y="634" width="188" height="116" rx="28" fill="url(#box)"/>
+  <rect x="522" y="634" width="188" height="116" rx="28" fill="url(#box)"/>
+  <path d="M342 676H474" stroke="#CFF1D7" stroke-width="26" stroke-linecap="round" opacity="0.92"/>
+  <path d="M550 676H682" stroke="#CFF1D7" stroke-width="26" stroke-linecap="round" opacity="0.92"/>
+  <circle cx="694" cy="732" r="54" fill="#FFC64B"/>
+</svg>

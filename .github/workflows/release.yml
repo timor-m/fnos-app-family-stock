@@ -36,41 +36,32 @@ jobs:
         shell: bash
         run: |
           PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          VERSION="${TAG_VERSION:-$PACKAGE_VERSION}"
-          {
-            echo "# 家藏 v${VERSION}"
-            echo
-            echo "## Summary"
-            echo
-            echo "- 面向多家庭、多地点的家庭库存管理应用"
-            echo "- Generated automatically by GitHub Actions"
-            echo
-            echo "## Release Artifacts"
-            echo
-            echo "- \`dist/app.tgz\`: fnOS app payload archive"
-            echo "- \`dist/*.fpk\`: installable fnOS package"
-            echo
-            echo "## Highlights"
-            echo
-            echo "- Vue 3 家庭库存工作台"
-            echo "- Nitro API 与 SQLite 本地持久化"
-            echo "- fnOS 统一网关与 Unix Socket"
-            echo "- fnOS 包结构自动校验"
-            echo "- GitHub Release artifact publishing"
-            echo
-            echo "## Notes"
-            echo
-            echo "- Generated from GitHub Actions"
-            echo "- Tag: \`${GITHUB_REF_NAME}\`"
-            echo "- Package version: \`${PACKAGE_VERSION}\`"
-          } > RELEASE_NOTES.md
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [[ "${TAG_VERSION}" != "${PACKAGE_VERSION}" ]]; then
+              echo "标签 v${TAG_VERSION} 与 package.json ${PACKAGE_VERSION} 不一致"
+              exit 1
+            fi
+          fi
+          export VERSION="${PACKAGE_VERSION}"
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const version = process.env.VERSION;
+            const template = JSON.parse(readFileSync("template.config.json", "utf8"));
+            const notes = template.releaseNotes || {};
+            const highlights = Array.isArray(notes.highlights) ? notes.highlights : [];
+            const lines = [`# 家藏 v${version}`, "", notes.summary || template.appDescription || "", ""];
+            for (const item of highlights) lines.push(`- ${item}`);
+            lines.push("");
+            writeFileSync("RELEASE_NOTES.md", lines.join("\n"));
+          '
           echo "release_name=家藏 v${VERSION}" >> "$GITHUB_ENV"
+          echo "release_tag=v${VERSION}" >> "$GITHUB_ENV"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          tag_name: ${{ env.release_tag }}
           name: ${{ env.release_name }}
           body_path: RELEASE_NOTES.md
           files: |
