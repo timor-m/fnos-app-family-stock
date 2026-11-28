@@ -7,6 +7,7 @@ defineProps<{
   items: InventoryHistoryItem[];
   refreshing: boolean;
   filtered?: boolean;
+  error?: string;
 }>();
 
 const emit = defineEmits<{
@@ -28,6 +29,7 @@ const emit = defineEmits<{
       </button>
     </header>
 
+    <p v-if="error" class="inline-error" role="alert">{{ error }}<button type="button" @click="emit('refresh')">重试</button></p>
     <InventoryHistoryList :items="items" :filtered="filtered" @restock="emit('restock', $event)" />
   </section>
 </template>

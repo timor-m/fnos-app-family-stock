@@ -1,5 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import metadata from "../../../package.json" with { type: "json" };
 import { DatabaseSync } from "node:sqlite";
 import { getAppConfig } from "../utils/runtime-config";
 import { schemaSql, schemaVersion, systemCategories } from "./schema";
@@ -55,6 +56,14 @@ function seedSystemData(db: DatabaseSync) {
 
 function migrate(db: DatabaseSync) {
   db.exec(schemaSql);
+  const operationColumns = db.prepare("PRAGMA table_info(agent_operations)").all() as Array<{name:string}>;
+  if (!operationColumns.some(column => column.name === "snapshot_json")) db.exec("ALTER TABLE agent_operations ADD COLUMN snapshot_json TEXT NOT NULL DEFAULT '{}'");
+  const batchColumns = db.prepare("PRAGMA table_info(inventory_batches)").all() as Array<{name:string}>;
+  if (!batchColumns.some(column => column.name === "version")) db.exec("ALTER TABLE inventory_batches ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+  db.exec(`CREATE TRIGGER IF NOT EXISTS inventory_batch_version AFTER UPDATE ON inventory_batches
+    WHEN NEW.version = OLD.version BEGIN UPDATE inventory_batches SET version = OLD.version + 1 WHERE id = NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS inventory_product_version AFTER UPDATE ON products
+    BEGIN UPDATE inventory_batches SET version = version + 1 WHERE product_id = NEW.id; END;`);
   const draftColumns = db.prepare("PRAGMA table_info(intake_drafts)").all() as Array<{ name: string }>;
   if (!draftColumns.some((column) => column.name === "field_versions_json")) {
     db.exec("ALTER TABLE intake_drafts ADD COLUMN field_versions_json TEXT NOT NULL DEFAULT '{}'");
@@ -94,11 +103,20 @@ export function getDatabase() {
   const databasePath = join(config.storageDir, "db", "family-stock.sqlite");
   mkdirSync(dirname(databasePath), { recursive: true });
 
-  database = new DatabaseSync(databasePath);
-  database.exec("PRAGMA foreign_keys = ON");
-  database.exec("PRAGMA journal_mode = WAL");
-  database.exec("PRAGMA busy_timeout = 5000");
-  migrate(database);
+  const existing = existsSync(databasePath);
+  const db = new DatabaseSync(databasePath);
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    if (existing && process.env.NODE_ENV === "production") {
+      const backup = join(config.storageDir, "backups", `before-update-${metadata.version}.sqlite`);
+      if (!existsSync(backup)) { db.prepare("VACUUM INTO ?").run(backup); chmodSync(backup, 0o600); }
+    }
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec("PRAGMA journal_mode = WAL");
+    migrate(db);
+    database = db;
+  } catch (error) { db.close(); throw error; }
+
   return database;
 }
 

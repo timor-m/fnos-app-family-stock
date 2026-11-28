@@ -42,6 +42,7 @@ export async function request<T>(path: string, init?: RequestInit) {
       ...init,
       headers: {
         ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }),
+        ...(path.replace(/^\//, "").startsWith("agent/") && init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase()) ? { "x-family-stock-request": "1" } : {}),
         ...init?.headers
       }
     });

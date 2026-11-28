@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageSkeleton from "./PageSkeleton.vue";
+import { useUnsavedChanges } from "../composables/useUnsavedChanges";
 import { onMounted, ref } from "vue";
 import { BellRing, CheckCircle2, LoaderCircle, Save, Send, Shield, TriangleAlert } from "@lucide/vue";
 import FormSelect from "./form/FormSelect.vue";
@@ -48,6 +50,7 @@ const weekdays = [
 ];
 
 const loading = ref(true);
+const loaded = ref(false);
 const saving = ref(false);
 const testing = ref(false);
 const sendingNow = ref(false);
@@ -95,11 +98,20 @@ function formatSentAt(value: string | null) {
   }).format(date);
 }
 
+const { markSaved } = useUnsavedChanges(() => ({
+  enabled: settings.value.enabled, channel: settings.value.channel, schedule: settings.value.schedule,
+  weekday: settings.value.weekday, sendHour: settings.value.sendHour, expiringDays: settings.value.expiringDays,
+  familyIds: settings.value.familyIds, includeLowStock: settings.value.includeLowStock,
+  onlyWhenNonEmpty: settings.value.onlyWhenNonEmpty, webhook: webhookInput.value
+}), saving);
+
 async function loadSettings() {
   loading.value = true;
   error.value = "";
   try {
     settings.value = await request<PushSettings>("notifications/push/settings");
+    loaded.value = true;
+    markSaved();
   } catch (err) {
     error.value = err instanceof Error ? err.message : "推送配置加载失败";
   } finally {
@@ -122,6 +134,7 @@ function toggleFamilyScope(familyId: string) {
 }
 
 async function saveSettings() {
+  if (saving.value || testing.value || sendingNow.value || loading.value || !loaded.value) return;
   saving.value = true;
   error.value = "";
   notice.value = "";
@@ -142,6 +155,8 @@ async function saveSettings() {
       })
     });
     webhookInput.value = "";
+    loaded.value = true;
+    markSaved();
     notice.value = "外部推送配置已保存";
   } catch (err) {
     error.value = err instanceof Error ? err.message : "保存失败";
@@ -151,6 +166,7 @@ async function saveSettings() {
 }
 
 async function testPush() {
+  if (saving.value || testing.value || sendingNow.value || loading.value || !loaded.value) return;
   testing.value = true;
   error.value = "";
   notice.value = "";
@@ -174,6 +190,7 @@ async function testPush() {
 }
 
 async function sendNow() {
+  if (saving.value || testing.value || sendingNow.value || loading.value || !loaded.value) return;
   sendingNow.value = true;
   error.value = "";
   notice.value = "";
@@ -202,19 +219,17 @@ onMounted(() => {
     <header class="push-header">
       <div>
         <h2>外部推送提醒</h2>
-        <p>定时将已过期、临期与低库存摘要发送到群机器人或手机，避免 NAS 里的数据长期忘记查看</p>
+        <p>按设定时间发送临期与低库存摘要</p>
       </div>
       <label class="push-switch">
-        <input v-model="settings.enabled" type="checkbox" />
+        <input v-model="settings.enabled" type="checkbox" :disabled="!loaded || loading || saving" />
         <span>{{ settings.enabled ? "已开启" : "未开启" }}</span>
       </label>
     </header>
 
-    <div v-if="loading" class="push-loading">
-      <LoaderCircle class="spin" :size="20" />
-      <span>正在加载推送配置</span>
-    </div>
+    <PageSkeleton v-if="loading" />
 
+    <p v-else-if="!loaded" class="inline-error" role="alert">{{ error || "配置加载失败" }}<button type="button" @click="loadSettings">重试</button></p>
     <form v-else class="push-form" @submit.prevent="saveSettings">
       <div class="form-grid">
         <label class="field">
@@ -346,7 +361,7 @@ onMounted(() => {
 
 <style scoped>
 .push-settings {
-  padding: 16px 20px 20px;
+  padding: 0;
 }
 .push-header {
   display: flex;

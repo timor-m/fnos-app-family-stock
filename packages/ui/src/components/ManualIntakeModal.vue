@@ -75,7 +75,7 @@ function onExtraToggle(event: Event) {
 </script>
 
 <template>
-  <ModalFrame
+  <ModalFrame :busy="submitting"
     :open="open"
     title="文字录入"
     description="名称、数量、放到哪"

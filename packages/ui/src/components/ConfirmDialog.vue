@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref as overlayRef, toRef } from "vue";
+import { useOverlay } from "../composables/useOverlay";
 import { TriangleAlert, X } from "@lucide/vue";
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean;
   title: string;
   message: string;
@@ -13,11 +15,14 @@ withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
+const overlayPanel = overlayRef<HTMLElement | null>(null);
+useOverlay(toRef(props, "open"), overlayPanel, () => emit("cancel"));
 </script>
 
 <template>
+  <Teleport to="body">
   <div v-if="open" class="confirm-backdrop" @click.self="emit('cancel')">
-    <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+    <section ref="overlayPanel" tabindex="-1" class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
       <header>
         <div class="confirm-icon"><TriangleAlert :size="20" /></div>
         <div><h2 id="confirm-title">{{ title }}</h2><p>{{ message }}</p></div>
@@ -29,6 +34,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>();
       </footer>
     </section>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>

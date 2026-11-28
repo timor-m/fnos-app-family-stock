@@ -1,0 +1,70 @@
+{
+  "passed": true,
+  "isolated": true,
+  "cases": [
+    {
+      "name": "时间样本 A",
+      "stored": "2026-11-28 12:37:06",
+      "utc": "2026-11-28T12:37:06.000Z",
+      "shanghai": "2026-11-28 20:37:06",
+      "actual": {
+        "name": "时间样本 A",
+        "utc": "2026-11-28T12:37:06.000Z",
+        "shanghai": "2026-11-28 20:37:06"
+      }
+    },
+    {
+      "name": "时间样本 B",
+      "stored": "2026-11-28 23:45:00",
+      "utc": "2026-11-28T23:45:00.000Z",
+      "shanghai": "2026-11-29 07:45:00",
+      "actual": {
+        "name": "时间样本 B",
+        "utc": "2026-11-28T23:45:00.000Z",
+        "shanghai": "2026-11-29 07:45:00"
+      }
+    },
+    {
+      "name": "时间样本 C",
+      "stored": "2026-11-28T20:37:06+08:00",
+      "utc": "2026-11-28T12:37:06.000Z",
+      "shanghai": "2026-11-28 20:37:06",
+      "actual": {
+        "name": "时间样本 C",
+        "utc": "2026-11-28T12:37:06.000Z",
+        "shanghai": "2026-11-28 20:37:06"
+      }
+    },
+    {
+      "name": "时间样本 D",
+      "stored": "2026-11-28T12:37:06.123Z",
+      "utc": "2026-11-28T12:37:06.123Z",
+      "shanghai": "2026-11-28 20:37:06",
+      "actual": {
+        "name": "时间样本 D",
+        "utc": "2026-11-28T12:37:06.123Z",
+        "shanghai": "2026-11-28 20:37:06"
+      }
+    },
+    {
+      "name": "时间样本 E",
+      "stored": "not-a-date",
+      "utc": null,
+      "shanghai": null,
+      "actual": {
+        "name": "时间样本 E",
+        "utc": null,
+        "shanghai": null
+      }
+    }
+  ],
+  "codexExitCode": 0,
+  "tools": [
+    "get_inventory_history"
+  ],
+  "originalRowsUnchanged": true,
+  "serverTimeZone": "America/Los_Angeles",
+  "displayTimeZone": "Asia/Shanghai",
+  "activeGrants": 0,
+  "testDatabaseRemoved": true
+}

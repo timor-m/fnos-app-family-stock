@@ -30,7 +30,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="data-section table-section full-section">
+  <section class="data-section table-section full-section inventory-section">
     <header class="section-heading">
       <div>
         <h2>库存批次</h2>

@@ -14,14 +14,18 @@ const workspaceRoutes: RouteRecordRaw[] = [
   { path: "/me", component: WorkspacePage, meta: { view: "locations", title: "我的" } },
   { path: "/me/families", component: WorkspacePage, meta: { view: "locations", profileSection: "family", title: "家庭分组" } },
   { path: "/me/locations", component: WorkspacePage, meta: { view: "locations", profileSection: "locations", title: "房屋地点" } },
+  { path: "/me/agent/logs", component: WorkspacePage, meta: { view: "locations", profileSection: "agentLogs", title: "调用记录" } },
+  { path: "/me/agent", component: WorkspacePage, meta: { view: "locations", profileSection: "agent", title: "Agent 接入" } },
   { path: "/me/ai", component: WorkspacePage, meta: { view: "locations", profileSection: "ai", title: "AI 设置" } },
   { path: "/me/push", component: WorkspacePage, meta: { view: "locations", profileSection: "push", title: "外部推送提醒" } },
   { path: "/me/runtime", component: WorkspacePage, meta: { view: "locations", profileSection: "runtime", title: "运行状态" } },
-  { path: "/me/about", component: WorkspacePage, meta: { view: "locations", title: "关于" } }
+  { path: "/me/feedback", component: WorkspacePage, meta: { view: "locations", profileSection: "feedback", title: "反馈与进度" } },
+  { path: "/me/about", component: WorkspacePage, meta: { view: "locations", profileSection: "about", title: "关于" } }
 ];
 
 const router = createRouter({
   history: createWebHistory(base),
+  scrollBehavior: (_to, _from, saved) => saved || { top: 0 },
   routes: [
     { path: "/", redirect: "/overview" },
     ...workspaceRoutes,

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref as overlayRef, toRef } from "vue";
+import { useOverlay } from "../composables/useOverlay";
 import { computed } from "vue";
 import { Camera, CheckCircle2, TriangleAlert, X } from "@lucide/vue";
 import { formatDateTime } from "../utils/format";
@@ -42,30 +44,14 @@ function intakeName(item: IntakeDraft) {
     : `${item.categoryName || "商品"}拍照草稿`;
 }
 
-function trapTabKey(event: KeyboardEvent) {
-  if (event.key !== "Tab") return;
-  const container = event.currentTarget as HTMLElement;
-  const focusables = Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
-    )
-  ).filter((element) => element.offsetParent !== null);
-  if (!focusables.length) return;
-  const first = focusables[0];
-  const last = focusables[focusables.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
+const overlayPanel = overlayRef<HTMLElement | null>(null);
+useOverlay(toRef(props, "open"), overlayPanel, () => emit("close"));
 </script>
 
 <template>
+  <Teleport to="body">
   <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
-    <section class="modal compact-modal message-modal" role="dialog" aria-modal="true" aria-labelledby="messages-title" @keydown="trapTabKey">
+    <section ref="overlayPanel" tabindex="-1" class="modal compact-modal message-modal" role="dialog" aria-modal="true" aria-labelledby="messages-title">
       <header class="modal-header">
         <div>
           <h2 id="messages-title">消息</h2>
@@ -102,4 +88,5 @@ function trapTabKey(event: KeyboardEvent) {
       </div>
     </section>
   </div>
+  </Teleport>
 </template>

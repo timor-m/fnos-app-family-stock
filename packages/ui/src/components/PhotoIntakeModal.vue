@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref as overlayRef, toRef } from "vue";
+import { useOverlay } from "../composables/useOverlay";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
   Camera,
@@ -526,9 +528,9 @@ async function uploadWithProgress(intakeId: string, role: ImageRole, file: File)
     };
     xhr.onerror = () => reject(new Error("图片上传失败，请检查网络"));
     xhr.onload = () => {
-      let payload: ApiResponse<unknown> | null = null;
+      let payload: { ok: boolean; error?: { message?: string }; statusMessage?: string } | null = null;
       try {
-        payload = JSON.parse(xhr.responseText) as ApiResponse<unknown>;
+        payload = JSON.parse(xhr.responseText) as { ok: boolean; error?: { message?: string }; statusMessage?: string };
       } catch {
         reject(new Error("服务器返回了无效响应"));
         return;
@@ -697,11 +699,6 @@ async function close() {
   emit("close");
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape") {
-    void close();
-  }
-}
 
 function formatCandidateValue(candidate: Candidate) {
   if (candidate.fieldKey === "categoryId") {
@@ -757,11 +754,6 @@ watch(
   () => props.open,
   async (open) => {
     if (pollTimer) window.clearTimeout(pollTimer);
-    if (open) {
-      window.addEventListener("keydown", onKeydown);
-    } else {
-      window.removeEventListener("keydown", onKeydown);
-    }
     if (!open) return;
     reset();
     if (props.intakeId) {
@@ -803,16 +795,19 @@ watch(
 onBeforeUnmount(() => {
   if (pollTimer) window.clearTimeout(pollTimer);
   if (saveTimer) window.clearTimeout(saveTimer);
-  window.removeEventListener("keydown", onKeydown);
+
   for (const item of Object.values(uploads.value)) {
     if (item.preview.startsWith("blob:")) URL.revokeObjectURL(item.preview);
   }
 });
+const overlayPanel = overlayRef<HTMLElement | null>(null);
+useOverlay(toRef(props, "open"), overlayPanel, close);
 </script>
 
 <template>
+  <Teleport to="body">
   <div v-if="open" class="modal-backdrop" @click.self="close">
-    <section class="modal photo-intake-modal" role="dialog" aria-modal="true" aria-labelledby="photo-intake-title">
+    <section ref="overlayPanel" tabindex="-1" class="modal photo-intake-modal" role="dialog" aria-modal="true" aria-labelledby="photo-intake-title">
       <span class="sheet-grabber" aria-hidden="true"></span>
       <header class="modal-header">
         <div>
@@ -1129,6 +1124,7 @@ onBeforeUnmount(() => {
       </form>
     </section>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -1342,6 +1338,10 @@ onBeforeUnmount(() => {
   font-style: normal;
 }
 .empty-recognition {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 100px;
   margin: 0;
   color: var(--muted);
   font-size: 10px;

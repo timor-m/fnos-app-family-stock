@@ -75,7 +75,7 @@ watch(
 </script>
 
 <template>
-  <ModalFrame :open="open" :title="title" :description="helperText" title-id="manage-title" compact @close="emit('close')">
+  <ModalFrame :busy="submitting" :open="open" :title="title" :description="helperText" title-id="manage-title" compact @close="emit('close')">
     <form class="intake-form" @submit.prevent="emit('submit')">
       <div class="form-grid">
         <FormField :label="fieldLabel" required span>

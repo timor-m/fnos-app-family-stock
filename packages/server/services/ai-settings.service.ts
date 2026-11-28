@@ -4,6 +4,8 @@ import { createId } from "../utils/identifier";
 import { getAppConfig } from "../utils/runtime-config";
 import {
   aiProviderCatalog,
+  aiRequestHeaders,
+  isAiConfigured,
   createAiProvider,
   normalizeAiProvider,
   type AiProviderConfig,
@@ -11,11 +13,13 @@ import {
 } from "./ai-provider";
 import { decryptAiSecret, encryptAiSecret } from "./ai-secret.service";
 
+type Connection = AiProviderConfig & { id: string; name: string };
 const settingKey = "ai.extraction";
 
 type StoredProviderSettings = {
   baseUrl?: string;
   apiKeyEncrypted?: string;
+  headers?: Array<{ name: string; value?: string; valueEncrypted?: string }>;
   apiKey?: string;
   model?: string;
   timeoutSeconds?: number;
@@ -25,14 +29,19 @@ type StoredProviderSettings = {
 type StoredAiSettings = StoredProviderSettings & {
   enabled?: boolean;
   provider?: string;
+  profiles?: Array<StoredProviderSettings & { id: string; name: string; provider: string }>;
+  defaultProfileId?: string;
   providers?: Partial<Record<AiProviderKey, StoredProviderSettings>>;
 };
 
-type ParsedProviderSettings = Omit<StoredProviderSettings, "apiKeyEncrypted"> & {
+type ParsedProviderSettings = Omit<StoredProviderSettings, "apiKeyEncrypted" | "headers"> & {
+  headers?: Array<{ name: string; value: string }>;
   apiKey?: string;
 };
 
 type ParsedAiSettings = {
+  profiles?: Connection[];
+  defaultProfileId?: string;
   enabled?: boolean;
   provider?: string;
   providers: Partial<Record<AiProviderKey, ParsedProviderSettings>>;
@@ -45,6 +54,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function decryptProviderSettings(settings: StoredProviderSettings | undefined) {
   if (!settings) return undefined;
   const parsed: ParsedProviderSettings = {
+    headers: (settings.headers || []).map(header => ({ name: header.name, value: header.valueEncrypted ? decryptAiSecret(header.valueEncrypted) : header.value || "" })),
     baseUrl: settings.baseUrl,
     model: settings.model,
     timeoutSeconds: settings.timeoutSeconds,
@@ -71,22 +81,10 @@ function mergeProviderSettings(
 }
 
 function serializeSettings(settings: ParsedAiSettings) {
-  const providers: Partial<Record<AiProviderKey, StoredProviderSettings>> = {};
-  for (const provider of Object.keys(aiProviderCatalog) as AiProviderKey[]) {
-    const config = settings.providers[provider];
-    if (!config) continue;
-    providers[provider] = {
-      baseUrl: config.baseUrl,
-      model: config.model,
-      timeoutSeconds: config.timeoutSeconds,
-      maxRetries: config.maxRetries,
-      apiKeyEncrypted: encryptAiSecret(config.apiKey || "")
-    };
-  }
   return {
     enabled: settings.enabled === true,
-    provider: normalizeAiProvider(settings.provider),
-    providers
+    defaultProfileId: settings.defaultProfileId || "",
+    profiles: (settings.profiles || []).map(({ apiKey, headers, ...profile }) => ({ ...profile, apiKeyEncrypted: encryptAiSecret(apiKey), headers: (headers || []).map(header => ({ name: header.name, valueEncrypted: encryptAiSecret(header.value) })) }))
   };
 }
 
@@ -129,6 +127,11 @@ function parseStoredSettings(): ParsedAiSettings {
 
     return {
       enabled: stored.enabled,
+      profiles: Array.isArray(stored.profiles) ? stored.profiles.map(profile => ({
+        ...decryptProviderSettings(profile), id: profile.id, name: profile.name,
+        provider: normalizeAiProvider(profile.provider)
+      })) as Connection[] : undefined,
+      defaultProfileId: stored.defaultProfileId,
       provider,
       providers
     };
@@ -176,20 +179,31 @@ function resolveProviderConfig(provider: AiProviderKey, stored: ParsedAiSettings
     provider,
     baseUrl: providerConfig.baseUrl || runtimeConfig.baseUrl || defaults.defaultBaseUrl,
     apiKey: providerConfig.apiKey ?? runtimeConfig.apiKey,
+    headers: providerConfig.headers || [],
     model: providerConfig.model || runtimeConfig.model || defaults.defaultModel,
-    timeoutSeconds: clampInteger(providerConfig.timeoutSeconds, runtimeConfig.timeoutSeconds, 5, 120),
+    timeoutSeconds: clampInteger(providerConfig.timeoutSeconds, runtimeConfig.timeoutSeconds, 5, 3600),
     maxRetries: clampInteger(providerConfig.maxRetries, runtimeConfig.maxRetries, 0, 3)
   };
 }
 
+function connections(stored: ParsedAiSettings): Connection[] {
+  if (stored.profiles) return stored.profiles;
+  const keys = Object.keys(stored.providers) as AiProviderKey[];
+  if (!keys.length) {
+    const provider = normalizeAiProvider(stored.provider || getAppConfig().aiProvider);
+    const config = resolveProviderConfig(provider, stored);
+    return config.apiKey ? [{ ...config, id: `legacy-${provider}`, name: aiProviderCatalog[provider].label }] : [];
+  }
+  return keys.map(provider => ({ ...resolveProviderConfig(provider, stored), id: `legacy-${provider}`, name: aiProviderCatalog[provider].label }));
+}
+function defaultConnection(stored: ParsedAiSettings) {
+  const profiles = connections(stored);
+  return profiles.find(p => p.id === stored.defaultProfileId) || profiles.find(p => p.provider === stored.provider) || profiles[0];
+}
 export function getResolvedAiSettings(): AiProviderConfig & { enabled: boolean } {
-  const runtime = getAppConfig();
   const stored = parseStoredSettings();
-  const provider = normalizeAiProvider(stored.provider || runtime.aiProvider);
-  return {
-    enabled: stored.enabled ?? runtime.aiEnabled,
-    ...resolveProviderConfig(provider, stored)
-  };
+  const profile = defaultConnection(stored);
+  return { ...(profile || { provider: "custom", baseUrl: "", model: "", apiKey: "", timeoutSeconds: 30, maxRetries: 1 }), enabled: Boolean(profile) && (stored.enabled ?? getAppConfig().aiEnabled) };
 }
 
 function maskApiKey(apiKey: string) {
@@ -222,82 +236,94 @@ export function getAiStatistics() {
 }
 
 export function getPublicAiSettings() {
-  const runtime = getAppConfig();
   const stored = parseStoredSettings();
-  const provider = normalizeAiProvider(stored.provider || runtime.aiProvider);
-  const settings = {
-    enabled: stored.enabled ?? runtime.aiEnabled,
-    ...resolveProviderConfig(provider, stored)
-  };
-  const providerSettings = Object.fromEntries(
-    (Object.keys(aiProviderCatalog) as AiProviderKey[]).map((key) => {
-      const config = resolveProviderConfig(key, stored);
-      return [
-        key,
-        {
-          baseUrl: config.baseUrl,
-          model: config.model,
-          timeoutSeconds: config.timeoutSeconds,
-          maxRetries: config.maxRetries,
-          apiKeyConfigured: Boolean(config.apiKey),
-          apiKeyMasked: maskApiKey(config.apiKey)
-        }
-      ];
-    })
-  );
+  const settings = getResolvedAiSettings();
   return {
-    enabled: settings.enabled,
-    provider: settings.provider,
-    baseUrl: settings.baseUrl,
-    model: settings.model,
-    timeoutSeconds: settings.timeoutSeconds,
-    maxRetries: settings.maxRetries,
+    ...settings, apiKey: undefined, headers: undefined,
     apiKeyConfigured: Boolean(settings.apiKey),
-    apiKeyMasked: maskApiKey(settings.apiKey),
-    providerSettings,
-    providers: Object.entries(aiProviderCatalog).map(([key, value]) => ({
-      key,
-      label: value.label,
-      defaultBaseUrl: value.defaultBaseUrl,
-      defaultModel: value.defaultModel
-    })),
+    configured: isAiConfigured(settings),
+    defaultProfileId: defaultConnection(stored)?.id || "",
+    profiles: connections(stored).map(({ apiKey, headers, ...profile }) => ({ ...profile, headers: (headers || []).map(header => ({ name: header.name, value: "", configured: true })), apiKeyConfigured: Boolean(apiKey), apiKeyMasked: maskApiKey(apiKey) })),
+    providers: Object.entries(aiProviderCatalog).map(([key, value]) => ({ key, ...value })),
     statistics: getAiStatistics()
   };
 }
 
+function inputHeaders(value: unknown, existing: Connection | undefined, canKeep: boolean): NonNullable<AiProviderConfig["headers"]> {
+  if (value === undefined) return canKeep ? existing?.headers || [] : [];
+  if (!Array.isArray(value) || value.length > 32) throw createError({ statusCode: 400, statusMessage: "扩展请求头最多支持 32 组" });
+  const names = new Set<string>();
+  return value.flatMap(raw => {
+    if (!isRecord(raw) || typeof raw.name !== "string" || typeof raw.value !== "string") throw createError({ statusCode: 400, statusMessage: "扩展请求头格式无效" });
+    const name = raw.name.trim();
+    if (!name && !raw.value) return [];
+    const key = name.toLowerCase();
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.length > 128 || names.has(key)) throw createError({ statusCode: 400, statusMessage: "请求头名称无效或重复" });
+    if (["host", "content-length", "connection", "transfer-encoding", "upgrade", "cookie", "set-cookie"].includes(key)) throw createError({ statusCode: 400, statusMessage: "此请求头由系统管理，不能自定义" });
+    names.add(key);
+    const previous = canKeep ? existing?.headers?.find(header => header.name.toLowerCase() === key)?.value : undefined;
+    const headerValue = raw.value || previous || "";
+    if (!headerValue || headerValue.length > 8192 || /[^\t\x20-\x7e\x80-\xff]/.test(headerValue)) throw createError({ statusCode: 400, statusMessage: "请填写有效的请求头值；更换地址、服务商或名称后需重新填写" });
+    return [{ name, value: headerValue }];
+  });
+}
+
+function inputConnection(body: Record<string, unknown>, existing?: Connection): Connection {
+  if (typeof body.provider !== "string" || !Object.hasOwn(aiProviderCatalog, body.provider)) throw createError({ statusCode: 400, statusMessage: "请选择有效服务商" });
+  const provider = body.provider as AiProviderKey;
+  const baseUrl = normalizeBaseUrl(body.baseUrl);
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  if (!name || name.length > 80 || !model || model.length > 100) throw createError({ statusCode: 400, statusMessage: "请填写连接名称（80 字以内）与模型 ID（100 字以内）" });
+  const key = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+  // A changed endpoint/provider must never silently receive another connection's saved secret.
+  const canKeepKey = existing?.baseUrl === baseUrl && existing.provider === provider;
+  const apiKey = body.clearApiKey === true ? "" : key || (canKeepKey ? existing?.apiKey || "" : "");
+  return { id: existing?.id || createId("ai-connection"), name, provider, baseUrl, model, apiKey, headers: inputHeaders(body.headers, existing, canKeepKey),
+    timeoutSeconds: clampInteger(body.timeoutSeconds, 30, 5, 3600), maxRetries: clampInteger(body.maxRetries, 1, 0, 3) };
+}
+
 export function updateAiSettings(body: Record<string, unknown>) {
-  const runtime = getAppConfig();
   const stored = parseStoredSettings();
-  const provider = normalizeAiProvider(body.provider || stored.provider || runtime.aiProvider);
-  const defaults = aiProviderCatalog[provider];
-  const current = resolveProviderConfig(provider, stored);
-  const submittedKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
-  const apiKey = body.clearApiKey === true ? "" : submittedKey || current.apiKey;
-  const model = typeof body.model === "string" && body.model.trim()
-    ? body.model.trim()
-    : current.model || defaults.defaultModel;
-  if (!model || model.length > 100) {
-    throw createError({ statusCode: 400, statusMessage: "模型名称不能为空且不能超过 100 个字符" });
-  }
-  if (body.enabled === true && !apiKey) {
-    throw createError({ statusCode: 400, statusMessage: `启用 AI 前需要填写 ${defaults.label} API Key` });
-  }
-  const next: ParsedAiSettings = {
-    enabled: body.enabled === true,
-    provider,
-    providers: {
-      ...stored.providers,
-      [provider]: {
-        baseUrl: normalizeBaseUrl(body.baseUrl ?? current.baseUrl),
-        apiKey,
-        model,
-        timeoutSeconds: clampInteger(body.timeoutSeconds, current.timeoutSeconds, 5, 120),
-        maxRetries: clampInteger(body.maxRetries, current.maxRetries, 0, 3)
-      }
-    }
-  };
-  saveStoredSettings(next);
+  if (!Array.isArray(body.profiles)) throw createError({ statusCode: 400, statusMessage: "连接配置格式无效" });
+  const existing = connections(stored);
+  const ids = new Set<string>();
+  const profiles = body.profiles.map(raw => {
+    if (!isRecord(raw)) throw createError({ statusCode: 400, statusMessage: "连接配置格式无效" });
+    const old = typeof raw.id === "string" ? existing.find(p => p.id === raw.id) : undefined;
+    if (raw.id && !old && !(typeof raw.id === "string" && /^new-[a-zA-Z0-9-]+$/.test(raw.id))) throw createError({ statusCode: 400, statusMessage: "连接不存在，请刷新后重试" });
+    const profile = inputConnection(raw, old);
+    if (!old && typeof raw.id === "string") profile.id = raw.id;
+    if (ids.has(profile.id)) throw createError({ statusCode: 400, statusMessage: "连接 ID 重复" });
+    ids.add(profile.id); return profile;
+  });
+  const defaultProfileId = typeof body.defaultProfileId === "string" ? body.defaultProfileId : "";
+  if (profiles.length && !profiles.some(p => p.id === defaultProfileId)) throw createError({ statusCode: 400, statusMessage: "请选择默认连接" });
+  const selected = profiles.find(p => p.id === defaultProfileId);
+  if (body.enabled === true && (!selected || !isAiConfigured(selected))) throw createError({ statusCode: 400, statusMessage: "请先为默认连接配置 API Key、扩展请求头，或使用本地 Ollama" });
+  saveStoredSettings({ enabled: body.enabled === true, profiles, defaultProfileId, providers: {} });
   return getPublicAiSettings();
+}
+
+function previewConnection(body: Record<string, unknown>) {
+  const stored = parseStoredSettings();
+  const existing = typeof body.id === "string" ? connections(stored).find(p => p.id === body.id) : undefined;
+  return inputConnection({ ...body, name: body.name || "连接测试", model: body.model || "model-list" }, existing);
+}
+
+export async function listAiModels(body: Record<string, unknown>) {
+  const config = previewConnection(body);
+  if (!isAiConfigured(config)) throw createError({ statusCode: 400, statusMessage: "请填写 API Key 或扩展鉴权请求头" });
+  try {
+    const response = await fetch(`${config.baseUrl}/models`, {
+      headers: aiRequestHeaders(config),
+      signal: AbortSignal.timeout(30000), redirect: "error"
+    });
+    if (!response.ok) throw new Error(`获取模型列表失败（HTTP ${response.status}），可手动填写模型 ID`);
+    const payload = await response.json() as { data?: Array<{ id?: unknown }> };
+    if (!Array.isArray(payload.data)) throw new Error("服务未返回兼容的模型列表，请手动填写模型 ID");
+    return { models: [...new Set(payload.data.map(m => m.id).filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200))].sort() };
+  } catch (err) { throw createError({ statusCode: 502, statusMessage: err instanceof Error ? err.message : "模型列表加载失败" }); }
 }
 
 function aiTestStatusCode(code: string) {
@@ -310,25 +336,9 @@ function aiTestStatusCode(code: string) {
 }
 
 export async function testAiConnection(body: Record<string, unknown> = {}) {
-  const runtime = getAppConfig();
-  const stored = parseStoredSettings();
-  const provider = normalizeAiProvider(body.provider || stored.provider || runtime.aiProvider);
-  const defaults = aiProviderCatalog[provider];
-  const current = resolveProviderConfig(provider, stored);
-  const apiKey = typeof body.apiKey === "string" && body.apiKey.trim()
-    ? body.apiKey.trim()
-    : current.apiKey;
-  const config: AiProviderConfig = {
-    provider,
-    baseUrl: normalizeBaseUrl(body.baseUrl ?? current.baseUrl),
-    apiKey,
-    model: typeof body.model === "string" && body.model.trim()
-      ? body.model.trim()
-      : current.model || defaults.defaultModel,
-    timeoutSeconds: clampInteger(body.timeoutSeconds, current.timeoutSeconds, 5, 120),
-    maxRetries: clampInteger(body.maxRetries, current.maxRetries, 0, 3)
-  };
-  if (!config.apiKey) throw createError({ statusCode: 400, statusMessage: `请先填写 ${defaults.label} API Key` });
+  const config = previewConnection(body);
+  if (!body.model || typeof body.model !== "string" || !body.model.trim()) throw createError({ statusCode: 400, statusMessage: "请填写模型 ID" });
+  if (!isAiConfigured(config)) throw createError({ statusCode: 400, statusMessage: "请填写 API Key 或扩展鉴权请求头" });
 
   const runId = createId("ai-run");
   const db = getDatabase();

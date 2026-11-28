@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "isolated": true,
+  "mode": "local",
+  "endpoint": "http://127.0.0.1:61335/mcp",
+  "tools": [
+    "get_context",
+    "list_expiring_inventory",
+    "search_inventory"
+  ],
+  "codexExitCode": 0,
+  "temporaryGrantRevoked": true,
+  "answer": "连接的家庭：MCP 隔离家庭\n\n| 工具 | 状态 | 结果数量 |\n|---|---|---:|\n| `get_context` | 成功 | 1 个家庭 |\n| `search_inventory`（牛奶） | 成功 | 0 条 |\n| `list_expiring_inventory` | 成功 | 0 条 |",
+  "proxySaveVerified": true,
+  "nitroHotReloadVerified": true,
+  "existingBusinessDataUnchanged": true,
+  "disabledAfterTest": true
+}

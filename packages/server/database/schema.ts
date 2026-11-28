@@ -1,6 +1,22 @@
-export const schemaVersion = 5;
+export const schemaVersion = 6;
 
 export const schemaSql = `
+CREATE TABLE IF NOT EXISTS agent_grants (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), family_id TEXT NOT NULL REFERENCES families(id),
+ name TEXT NOT NULL, scopes_json TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_hint TEXT NOT NULL,
+ created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT, last_used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS agent_operations (
+ id TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES agent_grants(id), request_id TEXT NOT NULL,
+ tool TEXT NOT NULL, params_json TEXT NOT NULL, snapshot_json TEXT NOT NULL DEFAULT '{}', fingerprint TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+ created_at TEXT NOT NULL, expires_at TEXT NOT NULL, result_json TEXT, decided_at TEXT,
+ UNIQUE(grant_id, request_id)
+);
+CREATE TABLE IF NOT EXISTS agent_call_logs (
+ id TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES agent_grants(id), tool TEXT NOT NULL,
+ status TEXT NOT NULL, elapsed_ms INTEGER NOT NULL, operation_id TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_call_logs_grant_time ON agent_call_logs(grant_id, created_at);
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

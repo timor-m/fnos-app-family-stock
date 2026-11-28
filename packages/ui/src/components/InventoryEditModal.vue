@@ -75,7 +75,7 @@ function onPurchaseToggle(event: Event) {
 </script>
 
 <template>
-  <ModalFrame
+  <ModalFrame :busy="submitting"
     :open="open && !!item"
     title="编辑库存信息"
     description="改信息，不改数量"

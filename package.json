@@ -1,6 +1,6 @@
 {
   "name": "fnos-app-family-stock",
-  "version": "1.0.1",
+  "version": "1.0.7",
   "description": "Family inventory and expiry management for fnOS",
   "type": "module",
   "author": {
@@ -36,10 +36,14 @@
     "prepare:package": "node scripts/prepare-package.mjs",
     "validate:package": "node scripts/validate-package.mjs",
     "pack:app": "npm run build && npm run prepare:package && bash scripts/pack-app.sh && npm run validate:package",
-    "pack:fpk": "npm run pack:app && bash scripts/pack-fpk.sh"
+    "pack:fpk": "npm run pack:app && bash scripts/pack-fpk.sh",
+    "test:ui": "vitest run",
+    "typecheck": "vue-tsc -p tsconfig.ui.json",
+    "test:mcp": "npm run build && node scripts/test-mcp.mjs && node scripts/test-mcp-upgrade.mjs && node scripts/test-mcp-listener.mjs && node scripts/test-mcp-listener.mjs --local && node scripts/test-mcp-listener.mjs --local-no-vite"
   },
   "dependencies": {
     "@lucide/vue": "^1.25.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@vitejs/plugin-vue": "^6.0.7",
     "concurrently": "^10.0.3",
     "jimp": "^1.6.1",
@@ -47,5 +51,13 @@
     "vite": "^8.0.16",
     "vue": "^3.5.38",
     "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@vue/test-utils": "^2.6.0",
+    "happy-dom": "^21.0.4",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.2",
+    "vue-tsc": "^3.3.14"
   }
 }

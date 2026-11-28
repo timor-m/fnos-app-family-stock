@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOverlay } from "../../composables/useOverlay";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { CalendarDays, ChevronLeft, ChevronRight, X } from "@lucide/vue";
 
@@ -136,6 +137,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", place);
   window.removeEventListener("scroll", place, true);
 });
+useOverlay(open, panel, () => { open.value = false; });
 </script>
 
 <template>
@@ -149,7 +151,7 @@ onBeforeUnmount(() => {
     </button>
     <Teleport to="body">
       <div v-if="open" ref="layer" class="date-field-layer" @click.self="open = false">
-        <div ref="panel" class="date-field-panel" :style="panelStyle" role="dialog" :aria-label="ariaLabel">
+        <div ref="panel" tabindex="-1" class="date-field-panel" :style="panelStyle" role="dialog" :aria-label="ariaLabel">
           <span class="sheet-grabber" aria-hidden="true"></span>
           <header>
             <button type="button" aria-label="上个月" @click="shift(-1)"><ChevronLeft :size="16" /></button>

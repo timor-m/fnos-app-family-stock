@@ -15,8 +15,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:ui
+      - run: npm run typecheck
       - run: npm run download:fnpack
       - run: npm run pack:fpk
+      - run: node scripts/test-mcp.mjs
+      - run: node scripts/test-mcp-upgrade.mjs
+      - run: node scripts/test-mcp-listener.mjs
+      - run: node scripts/test-mcp-listener.mjs --local
+      - run: node scripts/test-mcp-listener.mjs --local-no-vite
       - name: Upload app.tgz artifact
         uses: actions/upload-artifact@v4
         with:

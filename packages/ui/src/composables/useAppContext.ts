@@ -32,6 +32,13 @@ const selectedLocationId = ref("");
 const selectedStoragePlaceId = ref("");
 const inventoryStock = ref<"" | "low">("");
 const dataVersion = ref(0);
+const historyPending = ref(false);
+const historyLoaded = ref(false);
+const historyError = ref("");
+let dashboardSequence = 0;
+let dashboardController: AbortController | null = null;
+let historySequence = 0;
+let intakeSequence = 0;
 
 const inventoryPageSize = 20;
 
@@ -78,8 +85,13 @@ async function loadCategories() {
 }
 
 async function loadDashboard(options: { appendInventory?: boolean; search?: string; showRefreshing?: boolean } = {}) {
-  if (!selectedFamilyId.value) {
+  const sequence = ++dashboardSequence;
+  dashboardController?.abort();
+  dashboardController = new AbortController();
+  const familyId = selectedFamilyId.value;
+  if (!familyId) {
     dashboard.value = null;
+    refreshing.value = false;
     return;
   }
 
@@ -94,33 +106,44 @@ async function loadDashboard(options: { appendInventory?: boolean; search?: stri
     if (selectedLocationId.value) params.set("locationId", selectedLocationId.value);
     if (selectedStoragePlaceId.value) params.set("storagePlaceId", selectedStoragePlaceId.value);
     if (inventoryStock.value) params.set("stock", inventoryStock.value);
-    const nextDashboard = await request<Dashboard>(`dashboard?${params.toString()}`);
+    const nextDashboard = await request<Dashboard>(`dashboard?${params.toString()}`, { signal: dashboardController.signal });
+    if (sequence !== dashboardSequence || familyId !== selectedFamilyId.value) return;
     dashboard.value = appendInventory && dashboard.value
       ? { ...nextDashboard, inventory: [...dashboard.value.inventory, ...nextDashboard.inventory] }
       : nextDashboard;
+  } catch (err) {
+    if (sequence === dashboardSequence && familyId === selectedFamilyId.value) throw err;
   } finally {
-    if (options.showRefreshing !== false) refreshing.value = false;
+    if (sequence === dashboardSequence) refreshing.value = false;
   }
 }
 
 async function loadInventoryHistory() {
-  if (!selectedFamilyId.value) {
-    inventoryHistory.value = [];
-    return;
-  }
-  const params = new URLSearchParams({ familyId: selectedFamilyId.value });
-  if (selectedLocationId.value) params.set("locationId", selectedLocationId.value);
-  inventoryHistory.value = await request<InventoryHistoryItem[]>(`inventory/history?${params.toString()}`);
+  const sequence = ++historySequence;
+  const familyId = selectedFamilyId.value;
+  if (!familyId) { inventoryHistory.value = []; historyPending.value = false; return; }
+  historyPending.value = true;
+  historyError.value = "";
+  try {
+    const params = new URLSearchParams({ familyId });
+    if (selectedLocationId.value) params.set("locationId", selectedLocationId.value);
+    const result = await request<InventoryHistoryItem[]>(`inventory/history?${params}`);
+    if (sequence !== historySequence || familyId !== selectedFamilyId.value) return;
+    inventoryHistory.value = result;
+    historyLoaded.value = true;
+  } catch (err) {
+    if (sequence === historySequence && familyId === selectedFamilyId.value) {
+      historyError.value = err instanceof Error ? err.message : "历史物品加载失败";
+    }
+  } finally { if (sequence === historySequence) historyPending.value = false; }
 }
 
 async function loadIntakes() {
-  if (!selectedFamilyId.value) {
-    intakeDrafts.value = [];
-    return;
-  }
-  intakeDrafts.value = await request<IntakeDraft[]>(
-    `intakes?${new URLSearchParams({ familyId: selectedFamilyId.value }).toString()}`
-  );
+  const sequence = ++intakeSequence;
+  const familyId = selectedFamilyId.value;
+  if (!familyId) { intakeDrafts.value = []; return; }
+  const result = await request<IntakeDraft[]>(`intakes?${new URLSearchParams({ familyId })}`);
+  if (sequence === intakeSequence && familyId === selectedFamilyId.value) intakeDrafts.value = result;
 }
 
 async function loadOcrStatus() {
@@ -165,6 +188,9 @@ export function useAppContext() {
     categories,
     dashboard,
     inventoryHistory,
+    historyPending,
+    historyLoaded,
+    historyError,
     intakeDrafts,
     ocrStatus,
     aiStatus,

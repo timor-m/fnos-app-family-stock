@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useOverlay } from "../../composables/useOverlay";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { Check, ChevronDown } from "@lucide/vue";
 
@@ -65,19 +66,10 @@ function onPointerDown(event: Event) {
   open.value = false;
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (!open.value) return;
-  if (event.key === "Escape") {
-    event.preventDefault();
-    open.value = false;
-  }
-}
-
 watch(open, (value) => {
   const action = value ? "addEventListener" : "removeEventListener";
   document[action]("mousedown", onPointerDown);
   document[action]("touchstart", onPointerDown);
-  window[action]("keydown", onKeydown);
   window[action]("resize", place);
   window[action]("scroll", place, true);
   if (value) nextTick(place);
@@ -90,10 +82,10 @@ watch(() => props.disabled, (disabled) => {
 onBeforeUnmount(() => {
   document.removeEventListener("mousedown", onPointerDown);
   document.removeEventListener("touchstart", onPointerDown);
-  window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("resize", place);
   window.removeEventListener("scroll", place, true);
 });
+useOverlay(open, panel, () => { open.value = false; });
 </script>
 
 <template>
@@ -112,7 +104,7 @@ onBeforeUnmount(() => {
     </button>
     <Teleport to="body">
       <div v-if="open" ref="layer" class="form-select-layer" @click.self="open = false">
-        <div ref="panel" class="form-select-panel" :style="panelStyle" role="listbox" :aria-label="ariaLabel">
+        <div ref="panel" tabindex="-1" class="form-select-panel" :style="panelStyle" role="listbox" :aria-label="ariaLabel">
           <span class="sheet-grabber" aria-hidden="true"></span>
           <p v-if="!options.length" class="form-select-empty">暂无可选项</p>
           <button

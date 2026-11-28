@@ -2,7 +2,7 @@ import { getDatabase } from "../database/client";
 import { createId } from "../utils/identifier";
 import { getAppConfig } from "../utils/runtime-config";
 import { writeLog } from "../utils/logger";
-import { aiProviderCatalog, createAiProvider, type AiExtractionRequest, type AiFieldCandidate, type AiOcrLine } from "./ai-provider";
+import { isAiConfigured, aiProviderCatalog, createAiProvider, type AiExtractionRequest, type AiFieldCandidate, type AiOcrLine } from "./ai-provider";
 import { getResolvedAiSettings } from "./ai-settings.service";
 import { calculateExpirationDate } from "./ocr-rule-parser";
 import { createManualStockIn, parseManualStockInInput } from "./inventory.service";
@@ -76,7 +76,7 @@ export function enqueueAiExtraction(intakeId: string) {
 
   const resultCount = Number(counts.resultCount || 0);
   const settings = getResolvedAiSettings();
-  if (!settings.enabled || !settings.apiKey || !resultCount) {
+  if (!settings.enabled || !isAiConfigured(settings) || !resultCount) {
     finishDraftWithoutAi(intakeId, resultCount > 0);
     return false;
   }
@@ -168,7 +168,7 @@ export function enqueueAiReExtraction(intakeId: string) {
   if (Number(counts.resultCount || 0) <= 0) return { intakeId, enqueued: false, reason: "暂无 OCR 结果，不能重新提取" };
 
   const settings = getResolvedAiSettings();
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !isAiConfigured(settings)) {
     const label = aiProviderCatalog[settings.provider]?.label || "AI";
     return { intakeId, enqueued: false, reason: `请先启用 AI 并配置 ${label} API Key` };
   }
@@ -840,7 +840,7 @@ class AiJobRunner {
         return;
       }
       const settings = getResolvedAiSettings();
-      if (!settings.enabled || !settings.apiKey) throw new Error("AI 配置已停用或 API Key 不可用");
+      if (!settings.enabled || !isAiConfigured(settings)) throw new Error("AI 配置已停用或 API Key 不可用");
       const startedAt = Date.now();
       try {
         const result = await createAiProvider(settings).extract(request);

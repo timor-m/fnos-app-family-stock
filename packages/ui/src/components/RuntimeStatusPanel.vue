@@ -8,6 +8,7 @@ const props = defineProps<{
   aiStatus: AiStatus | null;
   systemStatus: SystemStatus | null;
   refreshing?: boolean;
+  error?: string;
 }>();
 
 const emit = defineEmits<{
@@ -60,8 +61,8 @@ const nodeRuntimeSummary = computed(() => {
   <section class="profile-panel runtime-panel">
     <header class="section-heading">
       <div>
-        <h2>运行状态</h2>
-        <p>用于检查 fnOS 网关、AI、OCR 与 Node/Python/OpenVINO 环境</p>
+        <h2>服务与环境</h2>
+        <p>查看连接状态、识别队列与运行版本</p>
       </div>
       <button class="secondary-action" type="button" :disabled="refreshing" @click="emit('refresh')">
         <RefreshCw :size="16" />
@@ -69,6 +70,7 @@ const nodeRuntimeSummary = computed(() => {
       </button>
     </header>
 
+    <p v-if="error" class="inline-error" role="alert">{{ error }}<button type="button" @click="emit('refresh')">重试</button></p>
     <div class="runtime-status-grid">
       <article>
         <div class="runtime-status-icon green"><ShieldCheck :size="18" /></div>

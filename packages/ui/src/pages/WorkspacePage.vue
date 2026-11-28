@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteUpdate, onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import {
+  ChevronLeft,
   Bell,
   Boxes,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   Trash2,
   TriangleAlert
 } from "@lucide/vue";
+import PageSkeleton from "../components/PageSkeleton.vue";
 import ExpiryPage from "../components/ExpiryPage.vue";
 import HistoryPage from "../components/HistoryPage.vue";
 import InventoryEditModal from "../components/InventoryEditModal.vue";
@@ -37,7 +39,7 @@ import { request } from "../utils/api";
 import type { Family, FamilyMember, InventoryHistoryItem, InventoryItem, Location, LowStockItem, OcrStatus, StoragePlace } from "../types/api";
 
 type ViewKey = "overview" | "inventory" | "history" | "expiry" | "intakes" | "locations";
-type ProfileSection = "family" | "locations" | "ai" | "push" | "runtime";
+type ProfileSection = "family" | "locations" | "ai" | "push" | "runtime" | "about" | "feedback" | "agent" | "agentLogs";
 type ManageMode =
   | "create-family"
   | "rename-family"
@@ -58,6 +60,9 @@ const {
   categories,
   dashboard,
   inventoryHistory,
+  historyPending,
+  historyLoaded,
+  historyError,
   intakeDrafts,
   ocrStatus,
   aiStatus,
@@ -79,6 +84,8 @@ const submitting = ref(false);
 const quickActionBusyId = ref("");
 const inventoryLoadingMore = ref(false);
 const installingOcr = ref(false);
+const runtimePending = ref(false);
+const runtimeError = ref("");
 const modalError = ref("");
 const activeView = ref<ViewKey>("overview");
 const expandedProfileSection = ref<ProfileSection | null>(null);
@@ -133,6 +140,7 @@ const memberForm = ref({
 });
 let intakePollTimer: number | null = null;
 let intakeSnapshot = "";
+let editSnapshot = "";
 let applyingIntakeDefaults = false;
 const inventoryPageSize = 20;
 let searchTimer: number | null = null;
@@ -165,11 +173,15 @@ const viewPathMap: Record<ViewKey, string> = {
   locations: "/me"
 };
 const profileSectionPathMap: Record<ProfileSection, string> = {
+  agent: "/me/agent",
+  agentLogs: "/me/agent/logs",
   family: "/me/families",
   locations: "/me/locations",
   ai: "/me/ai",
   push: "/me/push",
-  runtime: "/me/runtime"
+  runtime: "/me/runtime",
+  about: "/me/about",
+  feedback: "/me/feedback"
 };
 
 function routeView() {
@@ -181,7 +193,7 @@ function routeView() {
 
 function routeProfileSection() {
   const section = route.meta.profileSection;
-  return section === "family" || section === "locations" || section === "ai" || section === "push" || section === "runtime"
+  return section === "family" || section === "locations" || section === "ai" || section === "push" || section === "runtime" || section === "about" || section === "feedback" || section === "agent" || section === "agentLogs"
     ? section
     : null;
 }
@@ -272,6 +284,7 @@ const availableTransferLocations = computed(
 const intakeDirty = computed(() => intakeOpen.value && JSON.stringify(intakeForm.value) !== intakeSnapshot);
 
 const viewTitle = computed(() => {
+  if (activeView.value === "locations" && expandedProfileSection.value) return { family: "家庭分组", locations: "房屋与存放位置", ai: "AI 设置", push: "推送提醒", runtime: "运行状态", about: "关于", feedback: "反馈与进度", agent: "Agent 接入", agentLogs: "调用记录" }[expandedProfileSection.value];
   if (activeView.value === "inventory") {
     return "全部库存";
   }
@@ -314,7 +327,7 @@ const viewDescription = computed(() => {
 
 const searchEnabled = computed(() => ["overview", "inventory", "history", "expiry"].includes(activeView.value));
 const searchPlaceholder = computed(() => {
-  if (activeView.value === "overview") return "搜家里有没有（输入自动跳到库存）";
+  if (activeView.value === "overview") return "搜家里有没有";
   if (activeView.value === "history") return "搜索历史物品、品牌或地点";
   if (activeView.value === "expiry") return "搜索临期商品、品牌或地点";
   return "搜索商品、品牌或存放位置";
@@ -363,7 +376,12 @@ async function loadSystemStatus() {
 }
 
 async function loadRuntimeStatus() {
-  await Promise.all([loadOcrStatus(), loadAiStatus(), loadSystemStatus()]);
+  if (runtimePending.value) return;
+  runtimePending.value = true;
+  runtimeError.value = "";
+  try { await Promise.all([loadOcrStatus(), loadAiStatus(), loadSystemStatus()]); }
+  catch (err) { runtimeError.value = err instanceof Error ? err.message : "运行状态更新失败"; }
+  finally { runtimePending.value = false; }
 }
 
 async function installOcrRuntime() {
@@ -405,7 +423,8 @@ async function guarded(load: () => Promise<void>) {
     serverOnline.value = true;
   } catch (err) {
     serverOnline.value = false;
-    showToast(err instanceof Error ? err.message : "数据加载失败", "error");
+    error.value = err instanceof Error ? err.message : "数据加载失败";
+    showToast(error.value, "error");
   }
 }
 
@@ -414,7 +433,7 @@ async function loadFamilies(preferredFamilyId?: string) {
 }
 
 async function refreshCurrentView(options: { fromPull?: boolean } = {}) {
-  if (loading.value || (pullRefreshing.value && !options.fromPull)) return;
+  if (loading.value || refreshing.value || (pullRefreshing.value && !options.fromPull)) return;
   refreshing.value = true;
   error.value = "";
   try {
@@ -447,7 +466,8 @@ async function refreshCurrentView(options: { fromPull?: boolean } = {}) {
     showToast("已刷新", "dark");
   } catch (err) {
     serverOnline.value = false;
-    showToast(err instanceof Error ? err.message : "刷新失败", "error");
+    error.value = err instanceof Error ? err.message : "刷新失败，当前显示上次的内容";
+    showToast(error.value, "error");
   } finally {
     refreshing.value = false;
   }
@@ -468,7 +488,7 @@ async function toggleFamilyTree(familyId: string) {
 }
 
 async function loadApp() {
-  loading.value = true;
+  loading.value = !dashboard.value;
   error.value = "";
 
   try {
@@ -479,13 +499,11 @@ async function loadApp() {
     ]);
     intakeForm.value.categoryId = categoryData[0]?.id || "";
     ensureProfileRouteReady();
-    await Promise.all([
-      loadDashboard(),
-      activeView.value === "history" ? loadInventoryHistory() : Promise.resolve(),
-      loadIntakes(),
-      loadRuntimeStatus()
-    ]);
+    await loadDashboard();
+    if (activeView.value === "history") void loadInventoryHistory();
+    void guarded(loadIntakes);
     serverOnline.value = true;
+    void guarded(loadRuntimeStatus);
   } catch (err) {
     serverOnline.value = false;
     error.value = err instanceof Error ? err.message : "加载失败";
@@ -688,6 +706,7 @@ async function attemptCloseIntake() {
 }
 
 async function submitIntake() {
+  if (submitting.value) return;
   submitting.value = true;
   modalError.value = "";
 
@@ -726,6 +745,7 @@ function closeManagement() {
 }
 
 async function submitManagement() {
+  if (submitting.value) return;
   submitting.value = true;
   modalError.value = "";
 
@@ -798,6 +818,7 @@ function closeMemberDialog() {
 }
 
 async function addMemberToFamily() {
+  if (submitting.value) return;
   const familyId = memberForm.value.familyId || expandedFamilyTreeId.value;
   if (!familyId) return;
   submitting.value = true;
@@ -990,6 +1011,7 @@ function openEditInventory(item: InventoryItem) {
   };
   modalError.value = "";
   editOpen.value = true;
+  void nextTick(() => { editSnapshot = JSON.stringify(editForm.value); });
 }
 
 function openEditFromOperation() {
@@ -999,14 +1021,16 @@ function openEditFromOperation() {
   openEditInventory(item);
 }
 
-function closeEditInventory() {
-  if (!submitting.value) {
+async function closeEditInventory() {
+  if (submitting.value || !await canDiscardEdit()) return;
+  {
     editOpen.value = false;
     editItem.value = null;
   }
 }
 
 async function submitEditInventory() {
+  if (submitting.value) return;
   if (!editItem.value) return;
   submitting.value = true;
   modalError.value = "";
@@ -1034,6 +1058,7 @@ async function submitEditInventory() {
 }
 
 async function submitOperation() {
+  if (submitting.value) return;
   if (!operationItem.value) {
     return;
   }
@@ -1076,35 +1101,23 @@ async function submitOperation() {
   }
 }
 
-function onGlobalKeydown(event: KeyboardEvent) {
-  if (event.key !== "Escape") return;
-  if (confirmState.value) {
-    resolveConfirm(false);
-    return;
-  }
-  if (operationOpen.value) {
-    closeOperation();
-    return;
-  }
-  if (editOpen.value) {
-    closeEditInventory();
-    return;
-  }
-  if (messagesOpen.value) {
-    messagesOpen.value = false;
-    return;
-  }
-  if (memberOpen.value) {
-    closeMemberDialog();
-    return;
-  }
-  if (manageOpen.value) {
-    closeManagement();
-    return;
-  }
-  if (intakeOpen.value) {
-    void attemptCloseIntake();
-  }
+const editDirty = computed(() => editOpen.value && JSON.stringify(editForm.value) !== editSnapshot);
+async function canDiscardEdit() {
+  return !editDirty.value || await askConfirm({ title: "放弃未保存的修改？", message: "关闭后将丢失本次修改。", confirmText: "放弃修改", danger: true });
+}
+async function canLeaveWorkspace() {
+  if (submitting.value) return false;
+  if (!await canDiscardEdit()) return false;
+  if (intakeDirty.value && !await askConfirm({ title: "放弃未保存的内容？", message: "离开后将丢失本次填写。", confirmText: "放弃填写", danger: true })) return false;
+  intakeOpen.value = false;
+  editOpen.value = false;
+  return true;
+}
+onBeforeRouteLeave(canLeaveWorkspace);
+onBeforeRouteUpdate(canLeaveWorkspace);
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (!intakeDirty.value && !editDirty.value && !submitting.value) return;
+  event.preventDefault(); event.returnValue = "";
 }
 
 function onVisibilityChange() {
@@ -1127,6 +1140,11 @@ function onWindowScroll() {
 }
 
 watch(selectedFamilyId, () => {
+  error.value = "";
+  dashboard.value = null;
+  inventoryHistory.value = [];
+  historyLoaded.value = false;
+  intakeDrafts.value = [];
   selectedLocationId.value = "";
   selectedStoragePlaceId.value = "";
   familyMembers.value = {};
@@ -1224,7 +1242,7 @@ onMounted(() => {
     void refreshProcessingState();
   }, 8000);
   document.addEventListener("visibilitychange", onVisibilityChange);
-  window.addEventListener("keydown", onGlobalKeydown);
+  window.addEventListener("beforeunload", onBeforeUnload);
   window.addEventListener("scroll", onWindowScroll, { passive: true });
 });
 
@@ -1233,7 +1251,7 @@ onBeforeUnmount(() => {
   clearToast();
   if (searchTimer) window.clearTimeout(searchTimer);
   document.removeEventListener("visibilitychange", onVisibilityChange);
-  window.removeEventListener("keydown", onGlobalKeydown);
+  window.removeEventListener("beforeunload", onBeforeUnload);
   window.removeEventListener("scroll", onWindowScroll);
 });
 </script>
@@ -1263,21 +1281,22 @@ onBeforeUnmount(() => {
 
       <div
         class="content"
-        :class="{ refreshing }"
         :style="{ transform: pullDistance ? `translateY(${Math.min(pullDistance, 76)}px)` : '' }"
         @touchstart.passive="onPullTouchStart"
         @touchmove="onPullTouchMove"
         @touchend="onPullTouchEnd"
         @touchcancel="onPullTouchCancel"
       >
-        <header class="page-heading">
+        <header class="page-heading" :class="{ 'subpage-header': activeView === 'locations' && expandedProfileSection }">
+          <button v-if="activeView === 'locations' && expandedProfileSection" class="back-button" type="button" :aria-label="expandedProfileSection === 'agentLogs' ? '返回 Agent 接入' : '返回我的'" @click="expandedProfileSection === 'agentLogs' ? router.push('/me/agent') : setView('locations')"><ChevronLeft :size="22" /></button>
           <div>
             <h1>{{ viewTitle }}</h1>
-            <p>{{ viewDescription }}</p>
+            <p v-if="activeView === 'locations' && expandedProfileSection === 'feedback'">让每一个问题都有后续</p>
+            <p v-else-if="activeView !== 'locations' || !expandedProfileSection">{{ viewDescription }}</p>
           </div>
           <div class="page-heading-actions">
             <button
-              v-if="activeView === 'locations'"
+              v-if="activeView === 'locations' && !expandedProfileSection"
               class="heading-icon-button"
               type="button"
               aria-label="查看消息"
@@ -1309,14 +1328,11 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <p v-if="error && dashboard" class="inline-error">
-          <TriangleAlert :size="16" />{{ error }}
+        <p v-if="error && dashboard" class="inline-error" role="alert">
+          <TriangleAlert :size="16" />{{ error }} <button type="button" @click="refreshCurrentView()">重试</button>
         </p>
 
-        <div v-if="loading" class="page-state">
-          <LoaderCircle class="spin" :size="28" />
-          <span>正在加载库存</span>
-        </div>
+        <PageSkeleton v-if="loading || (!dashboard && families.length && !error)" :overview="activeView === 'overview'" />
 
         <div v-else-if="error && !dashboard" class="page-state error-state">
           <TriangleAlert :size="28" />
@@ -1381,11 +1397,13 @@ onBeforeUnmount(() => {
             @select-storage-place="selectStoragePlace"
           />
 
+          <PageSkeleton v-else-if="activeView === 'history' && historyPending && !historyLoaded" />
           <HistoryPage
             v-else-if="activeView === 'history'"
             :items="filteredHistory"
+            :error="historyError"
             :filtered="normalizedSearch.length > 0"
-            :refreshing="refreshing"
+            :refreshing="historyPending"
             @refresh="loadInventoryHistory"
             @restock="restockFromHistory"
           />
@@ -1429,6 +1447,8 @@ onBeforeUnmount(() => {
             :ocr-status="ocrStatus"
             :ai-status="aiStatus"
             :system-status="systemStatus"
+            :runtime-pending="runtimePending"
+            :runtime-error="runtimeError"
             @toggle-profile-section="toggleProfileSection"
             @toggle-family-tree="toggleFamilyTree"
             @open-management="openManagement"

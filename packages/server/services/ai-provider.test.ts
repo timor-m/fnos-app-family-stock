@@ -272,3 +272,36 @@ test("creates OpenAI-compatible providers beyond DeepSeek", async () => {
   assert.equal(typeof provider.extract, "function");
   assert.equal(typeof provider.testConnection, "function");
 });
+
+test("custom gateways and keyless Ollama use the selected endpoint and model", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  globalThis.fetch = (async (url, init) => {
+    calls.push({ url: String(url), init: init! });
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    for (const provider of ["custom", "ollama"] as const) {
+      await createAiProvider({ provider, baseUrl: "http://localhost:11434/v1", model: "my-local-model", apiKey: "", timeoutSeconds: 600, maxRetries: 0 }).testConnection();
+    }
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].url, "http://localhost:11434/v1/chat/completions");
+    assert.equal(new Headers(calls[1].init.headers).has("authorization"), false);
+    assert.equal(JSON.parse(String(calls[1].init.body)).model, "my-local-model");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("custom headers reach connection tests and extraction with case-insensitive overrides", async () => {
+  const originalFetch = globalThis.fetch;
+  const seen: Headers[] = [];
+  globalThis.fetch = async (_url, options) => {
+    seen.push(new Headers(options?.headers));
+    return new Response(JSON.stringify({choices:[{message:{content: seen.length === 1 ? 'OK' : '{"fields":[]}'}}]}));
+  };
+  try {
+    const provider = createAiProvider({provider:'custom',baseUrl:'https://example.invalid',apiKey:'default',model:'model',timeoutSeconds:5,maxRetries:0,headers:[{name:'Authorization',value:'Custom auth'},{name:'x-project',value:'project'}]});
+    await provider.testConnection(); await provider.extract(request);
+    assert.equal(seen.length, 2);
+    for (const headers of seen) { assert.equal(headers.get('authorization'),'Custom auth'); assert.equal(headers.get('x-project'),'project'); assert.equal(headers.get('content-type'),'application/json'); }
+  } finally { globalThis.fetch = originalFetch; }
+});

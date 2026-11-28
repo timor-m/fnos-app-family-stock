@@ -27,7 +27,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <ModalFrame
+  <ModalFrame :busy="submitting"
     :open="open && !!family"
     title="添加成员"
     :description="family ? `加入到“${family.name}”` : ''"

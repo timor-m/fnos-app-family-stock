@@ -50,10 +50,15 @@
     </aside>
 
     <main class="workspace">
+      <header class="mobile-masthead">
+        <img :src="appIcon" alt="" /><strong>家藏</strong>
+        <FormSelect v-model="familyModel" :options="families.map(family => ({ value: family.id, label: family.name }))" aria-label="选择当前家庭" placeholder="选择家庭" />
+        <button class="icon-button" type="button" aria-label="待处理录入" @click="emit('navigate', 'intakes')"><Bell :size="19" /><span v-if="dashboard?.summary.pendingCount" class="notification-dot" /></button>
+      </header>
       <header class="topbar" :class="{ 'search-disabled': !searchEnabled }">
         <div v-if="searchEnabled" class="search-box">
           <Search :size="18" />
-          <input v-model="searchModel" type="search" :placeholder="searchPlaceholder" />
+          <input v-model="searchModel" aria-label="搜索库存物品" type="search" :placeholder="searchPlaceholder" />
           <button v-if="searchQuery" type="button" aria-label="清除搜索" @click="searchModel = ''">
             <X :size="16" />
           </button>
@@ -88,23 +93,28 @@
     </main>
 
     <nav class="mobile-nav" aria-label="移动端导航">
+      <span class="mobile-nav-rules" aria-hidden="true"></span>
+      <div class="mobile-nav-shoulder" aria-hidden="true"></div>
+      <svg class="mobile-nav-edge" viewBox="-42 -18 84 22" aria-hidden="true">
+        <path d="M-35.1 0 A16 16 0 0 0 -24.088 -4.392 A35 35 0 0 1 24.088 -4.392 A16 16 0 0 0 35.1 0" />
+      </svg>
       <button :class="{ active: activeView === 'overview' }" type="button" @click="emit('navigate', 'overview')">
-        <LayoutDashboard :size="20" />
+        <span class="mobile-nav-icon"><LayoutDashboard :size="20" /></span>
         <span>概览</span>
       </button>
       <button :class="{ active: activeView === 'inventory' || activeView === 'history' }" type="button" @click="emit('navigate', 'inventory')">
-        <Boxes :size="20" />
+        <span class="mobile-nav-icon"><Boxes :size="20" /></span>
         <span>库存</span>
       </button>
-      <button class="mobile-add" type="button" :disabled="!currentFamily" aria-label="拍照录入" @click="emit('open-photo-intake')">
-        <Camera :size="27" />
-      </button>
+      <div class="mobile-add-slot"><button class="mobile-add" type="button" :disabled="!currentFamily" aria-label="拍照录入" @click="emit('open-photo-intake')">
+        <Camera :size="28" />
+      </button></div>
       <button :class="{ active: activeView === 'expiry' }" type="button" @click="emit('navigate', 'expiry')">
-        <Clock3 :size="20" />
+        <span class="mobile-nav-icon"><Clock3 :size="20" /></span>
         <span>临期</span>
       </button>
       <button :class="{ active: activeView === 'locations' }" type="button" @click="emit('navigate', 'locations')">
-        <UserRound :size="20" />
+        <span class="mobile-nav-icon"><UserRound :size="20" /></span>
         <span>我的</span>
       </button>
     </nav>

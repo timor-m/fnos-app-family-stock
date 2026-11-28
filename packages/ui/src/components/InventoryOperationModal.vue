@@ -107,7 +107,7 @@ function clearStock() {
 </script>
 
 <template>
-  <ModalFrame
+  <ModalFrame :busy="submitting"
     :open="open && !!item"
     :title="operationTitle"
     :description="item ? `${item.name} · 当前 ${formatQuantity(item.quantity)}${item.unit}` : ''"

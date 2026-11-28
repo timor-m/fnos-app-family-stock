@@ -1,9 +1,10 @@
-export type AiProviderKey = "deepseek" | "kimi" | "glm" | "qwen";
+export type AiProviderKey = "deepseek" | "kimi" | "glm" | "qwen" | "openai" | "doubao" | "minimax" | "ollama" | "custom";
 
 export type AiProviderConfig = {
   provider: AiProviderKey;
   baseUrl: string;
   apiKey: string;
+  headers?: Array<{ name: string; value: string }>;
   model: string;
   timeoutSeconds: number;
   maxRetries: number;
@@ -29,11 +30,27 @@ export const aiProviderCatalog: Record<AiProviderKey, { label: string; defaultBa
     label: "Qwen",
     defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     defaultModel: "qwen-plus"
-  }
+  },
+  openai: { label: "OpenAI", defaultBaseUrl: "https://api.openai.com/v1", defaultModel: "" },
+  doubao: { label: "豆包", defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3", defaultModel: "" },
+  minimax: { label: "MiniMax", defaultBaseUrl: "https://api.minimaxi.com/v1", defaultModel: "" },
+  ollama: { label: "Ollama（本地）", defaultBaseUrl: "http://127.0.0.1:11434/v1", defaultModel: "" },
+  custom: { label: "自定义（OpenAI 兼容）", defaultBaseUrl: "", defaultModel: "" }
 };
 
+export function isAiConfigured(config: AiProviderConfig) {
+  return Boolean(config.baseUrl && config.model && (config.apiKey || config.headers?.length || config.provider === "ollama"));
+}
+
+export function aiRequestHeaders(config: AiProviderConfig) {
+  const headers = new Headers({ "content-type": "application/json" });
+  if (config.apiKey) headers.set("authorization", `Bearer ${config.apiKey}`);
+  for (const header of config.headers || []) headers.set(header.name, header.value);
+  return headers;
+}
+
 export function normalizeAiProvider(value: unknown): AiProviderKey {
-  return typeof value === "string" && value in aiProviderCatalog ? value as AiProviderKey : "deepseek";
+  return typeof value === "string" && Object.hasOwn(aiProviderCatalog, value) ? value as AiProviderKey : "deepseek";
 }
 
 function providerLabel(provider: AiProviderKey) {
@@ -324,16 +341,14 @@ export class OpenAiCompatibleProvider implements AiExtractionProvider {
       try {
         const response = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${this.config.apiKey}`
-          },
+          headers: aiRequestHeaders(this.config),
           body: JSON.stringify({
             model: this.config.model,
             temperature: defaultTemperature(this.config.provider, this.config.model),
             ...body
           }),
-          signal: controller.signal
+          signal: controller.signal,
+          redirect: "error"
         });
         const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
         if (!response.ok) {

@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { BellRing, Bot, ChevronDown, Database, Home, MapPin, MapPinned, Pencil, Plus, ShieldCheck, Trash2, UserRound } from "@lucide/vue";
+import { Info, MessageSquare, BellRing, Bot, ChevronRight, ChevronDown, Database, Home, MapPin, MapPinned, Pencil, Plus, ShieldCheck, Trash2, UserRound } from "@lucide/vue";
+import AgentCallLogsPanel from "./AgentCallLogsPanel.vue";
+import AgentAccessPanel from "./AgentAccessPanel.vue";
+import AboutPanel from "./AboutPanel.vue";
+import FeedbackPanel from "./FeedbackPanel.vue";
 import AiSettingsPanel from "./AiSettingsPanel.vue";
 import PushSettingsPanel from "./PushSettingsPanel.vue";
 import RuntimeStatusPanel from "./RuntimeStatusPanel.vue";
 import type { AiStatus, Dashboard, Family, FamilyMember, Location, OcrStatus, SessionUser, StoragePlace, SystemStatus } from "../types/api";
 
-type ProfileSection = "family" | "locations" | "ai" | "push" | "runtime";
+type ProfileSection = "family" | "locations" | "ai" | "push" | "runtime" | "about" | "feedback" | "agent" | "agentLogs";
 type ManageMode =
   | "create-family"
   | "rename-family"
@@ -29,6 +33,8 @@ const props = defineProps<{
   selectedFamilyId: string;
   dashboard: Dashboard | null;
   refreshing: boolean;
+  runtimePending?: boolean;
+  runtimeError?: string;
   ocrStatus: OcrStatus | null;
   aiStatus: AiStatus | null;
   systemStatus: SystemStatus | null;
@@ -46,21 +52,6 @@ const emit = defineEmits<{
 }>();
 
 const profileInitial = computed(() => props.profileName.slice(0, 1) || "家");
-
-const gatewayModeLabel = computed(() => {
-  if (!props.systemStatus) return "等待系统状态";
-  return props.systemStatus.accessMode === "gateway"
-    ? `统一网关 · ${props.systemStatus.gatewayPrefix}`
-    : `端口模式 · ${props.systemStatus.appPort || "未配置端口"}`;
-});
-
-const aiProviderStatusLabel = computed(() => {
-  const settings = props.aiStatus?.settings || props.systemStatus?.ai;
-  if (!settings) return "等待 AI 状态";
-  if (!settings.enabled) return `${settings.provider || "AI"} · 未启用`;
-  const configured = "apiKeyConfigured" in settings ? settings.apiKeyConfigured : settings.configured;
-  return `${settings.provider} · ${settings.model || "未配置模型"} · ${configured ? "Key 已配置" : "Key 未配置"}`;
-});
 
 const totalStoragePlaceCount = computed(() =>
   (props.currentFamily?.locations || []).reduce((sum, loc) => sum + (loc.storagePlaces?.length || 0), 0)
@@ -84,24 +75,24 @@ function locationInventoryCount(locationId: string) {
 </script>
 
 <template>
-  <div class="profile-page">
-    <section class="data-section profile-card">
+  <div class="profile-page" :class="{ 'profile-subpage': expandedProfileSection, 'feedback-subpage': expandedProfileSection === 'feedback' }">
+    <section v-if="!expandedProfileSection" class="data-section profile-card">
       <div class="profile-avatar">{{ profileInitial }}</div>
       <div class="profile-main">
         <strong>{{ profileName }}</strong>
-        <span>{{ session?.authenticated ? "统一网关" : "本地开发" }} · {{ profileUid }} · {{ currentFamily?.name || "未选择家庭" }}</span>
+        <span>{{ currentFamily?.name || "未选择家庭" }} · 管理家庭物品与识别服务</span>
       </div>
       <span class="role-chip">{{ profileRoleLabel }}</span>
     </section>
 
-    <section class="profile-accordion" aria-label="我的配置">
-      <article v-if="canManageFamily" class="data-section profile-accordion-item">
+    <section class="settings-menu" aria-label="我的配置">
+      <article v-if="canManageFamily && (!expandedProfileSection || expandedProfileSection === 'family')" class="data-section settings-menu-item">
         <button
           class="profile-entry"
-          :class="{ expanded: expandedProfileSection === 'family' }"
+          v-if="!expandedProfileSection"
           type="button"
-          :aria-expanded="expandedProfileSection === 'family'"
-          aria-controls="profile-family-management"
+
+
           @click="emit('toggle-profile-section', 'family')"
         >
           <ShieldCheck :size="19" />
@@ -109,7 +100,7 @@ function locationInventoryCount(locationId: string) {
             <strong>家庭分组</strong>
             <span>{{ families.length }} 个家庭，可管理分组与成员归属</span>
           </div>
-          <ChevronDown :size="16" />
+          <ChevronRight :size="16" />
         </button>
 
         <section v-if="expandedProfileSection === 'family'" id="profile-family-management" class="profile-panel family-panel">
@@ -184,13 +175,13 @@ function locationInventoryCount(locationId: string) {
         </section>
       </article>
 
-      <article class="data-section profile-accordion-item">
+      <article v-if="(!expandedProfileSection || expandedProfileSection === 'locations')" class="data-section settings-menu-item">
         <button
           class="profile-entry"
-          :class="{ expanded: expandedProfileSection === 'locations' }"
+          v-if="!expandedProfileSection"
           type="button"
-          :aria-expanded="expandedProfileSection === 'locations'"
-          aria-controls="profile-locations"
+
+
           @click="emit('toggle-profile-section', 'locations')"
         >
           <MapPinned :size="19" />
@@ -198,7 +189,7 @@ function locationInventoryCount(locationId: string) {
             <strong>房屋地点与存放位置</strong>
             <span>{{ currentFamily?.locations.length || 0 }} 个地点 · {{ totalStoragePlaceCount }} 个细分存放位置</span>
           </div>
-          <ChevronDown :size="16" />
+          <ChevronRight :size="16" />
         </button>
 
         <section v-if="expandedProfileSection === 'locations'" id="profile-locations" class="profile-panel location-panel">
@@ -281,21 +272,21 @@ function locationInventoryCount(locationId: string) {
         </section>
       </article>
 
-      <article v-if="canManageFamily" class="data-section profile-accordion-item">
+      <article v-if="canManageFamily && (!expandedProfileSection || expandedProfileSection === 'push')" class="data-section settings-menu-item">
         <button
           class="profile-entry"
-          :class="{ expanded: expandedProfileSection === 'push' }"
+          v-if="!expandedProfileSection"
           type="button"
-          :aria-expanded="expandedProfileSection === 'push'"
-          aria-controls="profile-push-settings"
+
+
           @click="emit('toggle-profile-section', 'push')"
         >
           <BellRing :size="19" />
           <div>
             <strong>外部推送提醒</strong>
-            <span>企微 / 飞书 / 钉钉 / Bark / Webhook 定时发送临期与低库存摘要</span>
+            <span>临期、低库存摘要与消息渠道</span>
           </div>
-          <ChevronDown :size="16" />
+          <ChevronRight :size="16" />
         </button>
 
         <div v-if="expandedProfileSection === 'push'" id="profile-push-settings" class="profile-panel">
@@ -303,21 +294,21 @@ function locationInventoryCount(locationId: string) {
         </div>
       </article>
 
-      <article class="data-section profile-accordion-item">
+      <article v-if="(!expandedProfileSection || expandedProfileSection === 'runtime')" class="data-section settings-menu-item">
         <button
           class="profile-entry"
-          :class="{ expanded: expandedProfileSection === 'runtime' }"
+          v-if="!expandedProfileSection"
           type="button"
-          :aria-expanded="expandedProfileSection === 'runtime'"
-          aria-controls="profile-runtime-status"
+
+
           @click="emit('toggle-profile-section', 'runtime')"
         >
           <Database :size="19" />
           <div>
             <strong>运行状态</strong>
-            <span>{{ gatewayModeLabel }} · {{ aiProviderStatusLabel }}</span>
+            <span>OCR 环境、AI 服务与任务队列</span>
           </div>
-          <ChevronDown :size="16" />
+          <ChevronRight :size="16" />
         </button>
 
         <RuntimeStatusPanel
@@ -326,31 +317,45 @@ function locationInventoryCount(locationId: string) {
           :ocr-status="ocrStatus"
           :ai-status="aiStatus"
           :system-status="systemStatus"
-          :refreshing="refreshing"
+          :refreshing="runtimePending"
+          :error="runtimeError"
           @refresh="emit('refresh-runtime')"
         />
       </article>
 
-      <article v-if="canManageFamily" class="data-section profile-accordion-item">
+      <article v-if="canManageFamily && (!expandedProfileSection || expandedProfileSection === 'ai')" class="data-section settings-menu-item">
         <button
           class="profile-entry"
-          :class="{ expanded: expandedProfileSection === 'ai' }"
+          v-if="!expandedProfileSection"
           type="button"
-          :aria-expanded="expandedProfileSection === 'ai'"
-          aria-controls="profile-ai-settings"
+
+
           @click="emit('toggle-profile-section', 'ai')"
         >
           <Bot :size="19" />
           <div>
             <strong>AI 设置</strong>
-            <span>DeepSeek/Kimi/GLM/Qwen 接入与结构化识别配置</span>
+            <span>模型服务、连接测试与识别配置</span>
           </div>
-          <ChevronDown :size="16" />
+          <ChevronRight :size="16" />
         </button>
 
         <div v-if="expandedProfileSection === 'ai'" id="profile-ai-settings" class="profile-panel ai-profile-panel">
           <AiSettingsPanel />
         </div>
+      </article>
+      <article v-if="expandedProfileSection === 'agentLogs'" class="data-section settings-menu-item"><div class="profile-panel"><AgentCallLogsPanel /></div></article>
+      <article v-if="!expandedProfileSection || expandedProfileSection === 'agent'" class="data-section settings-menu-item">
+        <button v-if="!expandedProfileSection" class="profile-entry" type="button" @click="emit('toggle-profile-section', 'agent')"><Bot :size="19"/><div><strong>Agent 接入</strong><span>MCP 授权、库存变更确认与调用记录</span></div><ChevronRight :size="16"/></button>
+        <div v-if="expandedProfileSection === 'agent'" class="profile-panel"><AgentAccessPanel :families="families" :selected-family-id="selectedFamilyId"/></div>
+      </article>
+      <article v-if="!expandedProfileSection || expandedProfileSection === 'feedback'" class="data-section settings-menu-item">
+        <button v-if="!expandedProfileSection" class="profile-entry" type="button" @click="emit('toggle-profile-section', 'feedback')"><MessageSquare :size="19" /><div><strong>反馈与进度</strong><span>提交问题、查看回复与处理进度</span></div><ChevronRight :size="16" /></button>
+        <div v-if="expandedProfileSection === 'feedback'" class="profile-panel"><FeedbackPanel /></div>
+      </article>
+      <article v-if="!expandedProfileSection || expandedProfileSection === 'about'" class="data-section settings-menu-item">
+        <button v-if="!expandedProfileSection" class="profile-entry" type="button" @click="emit('toggle-profile-section', 'about')"><Info :size="19" /><div><strong>关于</strong><span>应用版本、运行环境与源代码</span></div><ChevronRight :size="16" /></button>
+        <div v-if="expandedProfileSection === 'about'" class="profile-panel"><AboutPanel /></div>
       </article>
     </section>
   </div>

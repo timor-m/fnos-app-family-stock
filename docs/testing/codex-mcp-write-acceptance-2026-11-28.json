@@ -1,0 +1,91 @@
+{
+  "base": "http://127.0.0.1:57785/app/fnos-app-family-stock",
+  "isolated": true,
+  "phases": [
+    {
+      "name": "stockin",
+      "operationId": "8f4ae307-6880-4e9a-86d8-07d962d1abcb",
+      "status": "completed",
+      "confirmedInWeb": true,
+      "unchangedBeforeConfirmation": true,
+      "agentSelfApprovalDenied": true,
+      "crossSiteApprovalDenied": true,
+      "duplicateConfirmationIdempotent": true,
+      "sourceQuantity": 10
+    },
+    {
+      "name": "consume",
+      "operationId": "fa3129bb-2e07-4642-8292-d7735a2a646a",
+      "status": "completed",
+      "confirmedInWeb": true,
+      "unchangedBeforeConfirmation": true,
+      "agentSelfApprovalDenied": true,
+      "crossSiteApprovalDenied": true,
+      "duplicateConfirmationIdempotent": true,
+      "sourceQuantity": 8
+    },
+    {
+      "name": "transfer",
+      "operationId": "ca6b93b2-e7f4-4f2b-8ff5-5c70c74248b6",
+      "status": "completed",
+      "confirmedInWeb": true,
+      "unchangedBeforeConfirmation": true,
+      "agentSelfApprovalDenied": true,
+      "crossSiteApprovalDenied": true,
+      "duplicateConfirmationIdempotent": true,
+      "sourceQuantity": 5
+    },
+    {
+      "name": "discard",
+      "operationId": "aea781d9-6743-499a-a10b-167c43ff9356",
+      "status": "completed",
+      "confirmedInWeb": true,
+      "unchangedBeforeConfirmation": true,
+      "agentSelfApprovalDenied": true,
+      "crossSiteApprovalDenied": true,
+      "duplicateConfirmationIdempotent": true,
+      "sourceQuantity": 4
+    }
+  ],
+  "checks": {
+    "readonlyWriteDenied": true,
+    "revokedTokenDenied": true,
+    "allPendingUntilWebConfirmation": true,
+    "tokenCannotApprove": true,
+    "crossSiteDenied": true,
+    "allFourOperationLogsPresent": true,
+    "failedAuthorizationLogged": true,
+    "logFilterAndPagination": true,
+    "noTokenInLogs": true
+  },
+  "finalInventory": {
+    "kitchen": 4,
+    "storage": 3,
+    "total": 7
+  },
+  "transactionTypes": [
+    "stock_in",
+    "consume",
+    "transfer_out",
+    "transfer_in",
+    "discard"
+  ],
+  "auditCount": 22,
+  "passed": true,
+  "cleanup": {
+    "activeGrants": 0,
+    "mcpDisabled": true,
+    "testServerStopped": true,
+    "testDatabaseRemoved": true
+  },
+  "webChecks": {
+    "confirmationSummary": true,
+    "cancelLeavesPending": true,
+    "operationResultLink": true,
+    "connectionNameSearch": true,
+    "failedStatusFilter": true,
+    "twoPageNavigation": true
+  },
+  "scope": "本机独立临时数据库及随机端口；未连接现有开发库或飞牛库存。",
+  "additionalObservation": "MCP 库存流水 occurredAt 使用无时区 SQLite UTC 字符串。首轮 Codex 将 12:37 标成北京时间，存在时区误读风险；此项与已验证的授权/确认/调用审计不同，本轮未修复。"
+}

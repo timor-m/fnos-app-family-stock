@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { ref, toRef, useId } from "vue";
+import { useOverlay } from "../../composables/useOverlay";
 import { X } from "@lucide/vue";
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean;
+  busy?: boolean;
   title: string;
   description?: string;
   titleId?: string;
@@ -10,7 +13,7 @@ withDefaults(defineProps<{
   panelClass?: string;
 }>(), {
   description: "",
-  titleId: "modal-title",
+  titleId: "",
   compact: false,
   panelClass: ""
 });
@@ -19,48 +22,34 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-function trapTabKey(event: KeyboardEvent) {
-  if (event.key !== "Tab") return;
-  const container = event.currentTarget as HTMLElement;
-  const focusables = Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
-    )
-  ).filter((element) => element.offsetParent !== null);
-  if (!focusables.length) return;
-  const first = focusables[0];
-  const last = focusables[focusables.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
+const panel = ref<HTMLElement | null>(null);
+const generatedId = useId();
+function close() { if (!props.busy) emit("close"); }
+useOverlay(toRef(props, "open"), panel, close);
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
-    <section
-      class="modal"
-      :class="[compact ? 'compact-modal' : '', panelClass]"
-      role="dialog"
-      aria-modal="true"
-      :aria-labelledby="titleId"
-      @keydown="trapTabKey"
-    >
-      <span class="sheet-grabber" aria-hidden="true"></span>
-      <header class="modal-header">
-        <div>
-          <h2 :id="titleId">{{ title }}</h2>
-          <p v-if="description">{{ description }}</p>
-        </div>
-        <button class="icon-button" type="button" aria-label="关闭" @click="emit('close')">
-          <X :size="20" />
-        </button>
-      </header>
-      <slot />
-    </section>
-  </div>
+  <Teleport to="body">
+    <div v-if="open" class="modal-backdrop" @click.self="close">
+      <section ref="panel" tabindex="-1" :aria-busy="busy || undefined"
+        class="modal"
+        :class="[compact ? 'compact-modal' : '', panelClass]"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="titleId || generatedId"
+      >
+        <span class="sheet-grabber" aria-hidden="true"></span>
+        <header class="modal-header">
+          <div>
+            <h2 :id="titleId || generatedId">{{ title }}</h2>
+            <p v-if="description">{{ description }}</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="关闭" :disabled="busy" @click="close">
+            <X :size="20" />
+          </button>
+        </header>
+        <slot />
+      </section>
+    </div>
+  </Teleport>
 </template>

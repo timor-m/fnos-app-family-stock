@@ -645,9 +645,10 @@ export function parseStockOperationInput(body: Record<string, unknown>): StockOp
   };
 }
 
-export function applyStockOperation(batchId: string, input: StockOperationInput, user: RequestUser) {
+export function applyStockOperation(batchId: string, input: StockOperationInput, user: RequestUser, options: { manageTransaction?: boolean } = {}) {
   const db = getDatabase();
-  db.exec("BEGIN IMMEDIATE");
+  const manageTransaction = options.manageTransaction !== false;
+  if (manageTransaction) db.exec("BEGIN IMMEDIATE");
 
   try {
     const batch = db.prepare(`
@@ -867,7 +868,7 @@ export function applyStockOperation(batchId: string, input: StockOperationInput,
       }
     }
 
-    db.exec("COMMIT");
+    if (manageTransaction) db.exec("COMMIT");
     return {
       batchId,
       currentQuantity: resultingQuantity,
@@ -875,7 +876,7 @@ export function applyStockOperation(batchId: string, input: StockOperationInput,
       transactionIds
     };
   } catch (error) {
-    db.exec("ROLLBACK");
+    if (manageTransaction) db.exec("ROLLBACK");
     throw error;
   }
 }
