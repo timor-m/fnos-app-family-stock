@@ -23,4 +23,3 @@ export const handleAgentMcp = defineEventHandler(async event=>{
  try {await server.connect(transport);const response=await transport.handleRequest(event.req);response.headers.set('cache-control','no-store');return response;}
  finally {await transport.close();await server.close();}
 });
-
