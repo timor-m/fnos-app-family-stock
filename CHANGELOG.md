@@ -4,7 +4,7 @@
 
 ## Unreleased
 
-- 暂无未发布变更。
+- 飞牛反馈请求只使用 x-device-id，不再双传旧 x-client-id；本地开发和缺少有效设备标识时保留 x-client-id 回退，保留现有数据。
 
 ## 1.0.7
 

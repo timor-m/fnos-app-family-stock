@@ -19,7 +19,7 @@ export function readFnOSMachineId(env: NodeJS.ProcessEnv = process.env): string 
 
 export type FeedbackAppsIdentity = {
   headers: Record<string, string>;
-  /** Stable local key for sync/notification hashing; prefers legacy client when present. */
+  /** Stable local key for sync/notification hashing; follows the active device/client identity. */
   localKey: string;
   clientId: string | null;
   deviceId: string | null;
@@ -44,7 +44,7 @@ export function getFeedbackInstallation(db: DatabaseSync = getDatabase()): strin
 
 /**
  * Resolve /apps/v1 identity headers.
- * fnOS with a valid machine id: x-device-id; dual-pass legacy x-client-id when present; never create a new client id.
+ * fnOS with a valid machine id: only x-device-id; do not read, create or transmit a client id.
  * Docker / missing machine id: ensure and send only x-client-id.
  */
 export function resolveFeedbackAppsIdentity(
@@ -53,14 +53,12 @@ export function resolveFeedbackAppsIdentity(
 ): FeedbackAppsIdentity {
   const headers: Record<string, string> = { 'x-app-id': FEEDBACK_APP_ID };
   const machineId = dependencies.machineId !== undefined ? dependencies.machineId : readFnOSMachineId();
-  const legacyClientId = readFeedbackInstallation(db);
   if (machineId && isValidDeviceId(machineId)) {
     headers['x-device-id'] = machineId;
-    if (legacyClientId) headers['x-client-id'] = legacyClientId;
     return {
       headers,
-      localKey: legacyClientId || machineId,
-      clientId: legacyClientId,
+      localKey: machineId,
+      clientId: null,
       deviceId: machineId,
     };
   }
